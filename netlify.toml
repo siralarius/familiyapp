@@ -1,0 +1,3 @@
+# Netlify is connected to this repository.
+# A static/WebAssembly preview host will be configured before enabling deploy previews.
+# The ASP.NET Core web host is currently used for local browser development and CI validation.
