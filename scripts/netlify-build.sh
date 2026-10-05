@@ -12,3 +12,4 @@ export PATH="$DOTNET_INSTALL_DIR:$PATH"
 
 dotnet --info
 dotnet publish src/FamilyApp.Web/FamilyApp.Web.csproj -c Release -o publish
+node scripts/configure-google-calendar.mjs publish/wwwroot/index.html

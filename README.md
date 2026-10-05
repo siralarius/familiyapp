@@ -76,6 +76,12 @@ Add internet/mobile-data synchronization without replacing local SQLite as the s
 
 **Iteration 2 exit criteria:** paired devices can converge while on unrelated networks/mobile data, with household content encrypted before it leaves the device and without moving the authoritative data model into a cloud database.
 
+## Google Calendar deployment
+
+- Set the Netlify build environment variable `GOOGLE_CLIENT_ID` to a Google OAuth 2.0 Web client ID.
+- Add the deployed Netlify site origin and any deploy-preview origins to the OAuth client's authorized JavaScript origins in Google Cloud.
+- The Netlify build injects the client ID into the published app. Without it, Google Calendar remains disabled with a setup message; no client ID is embedded in source control.
+
 ## Proposed solution structure
 
 ```text
