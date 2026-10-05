@@ -1,3 +1,8 @@
-# Netlify is connected to this repository.
-# A static/WebAssembly preview host will be configured before enabling deploy previews.
-# The ASP.NET Core web host is currently used for local browser development and CI validation.
+[build]
+  command = "dotnet publish src/FamilyApp.Web/FamilyApp.Web.csproj -c Release -o publish"
+  publish = "publish/wwwroot"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
