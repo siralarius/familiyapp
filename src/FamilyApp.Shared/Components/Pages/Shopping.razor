@@ -1,3 +1,33 @@
 @page "/shopping"
+@using FamilyApp.Core.Shopping
+@inject ShoppingListService Shopping
+
 <PageTitle>Shopping · Family</PageTitle>
-<div class="page"><header class="page-heading"><p class="eyebrow">Shared list</p><h1>Shopping</h1><p class="lede">A simple list everyone can keep up to date.</p></header><section class="empty-state"><span class="empty-icon">✓</span><h2>Nothing to buy</h2><p>Your shopping list is ready for the next feature increment.</p></section></div>
+<div class="page shopping-page">
+<header class="page-heading"><p class="eyebrow">Shared list</p><h1>Shopping</h1><p class="lede">Add what you need. Check it off together.</p></header>
+<form class="add-item" @onsubmit="Add" @onsubmit:preventDefault><input aria-label="Item name" placeholder="Add an item…" @bind="newName" /><input class="small-input" aria-label="Quantity" placeholder="Qty" @bind="newQuantity" /><button type="submit" disabled="@string.IsNullOrWhiteSpace(newName)">Add</button></form>
+@if (!loaded) { <p class="loading">Loading list…</p> }
+else if (items.Count == 0) { <section class="empty-state"><span class="empty-icon">✓</span><h2>Nothing to buy</h2><p>Add your first item above.</p></section> }
+else {
+<div class="shopping-list">
+@foreach (var item in items.OrderBy(x => x.IsChecked)) {
+<div class="shopping-item @(item.IsChecked ? "checked" : "")">
+<button class="check-button" aria-label="Toggle @item.Name" @onclick="() => Toggle(item.Id)">@(item.IsChecked ? "✓" : "")</button>
+@if (editingId == item.Id) { <div class="edit-fields"><input @bind="editName" /><input class="small-input" placeholder="Qty" @bind="editQuantity" /><input placeholder="Category" @bind="editCategory" /></div><button class="item-action" @onclick="() => Save(item.Id)">Save</button> }
+else { <div class="item-copy"><strong>@item.Name</strong><span>@Meta(item)</span></div><button class="item-action" @onclick="() => BeginEdit(item)">Edit</button> }
+<button class="item-action danger" aria-label="Remove @item.Name" @onclick="() => Remove(item.Id)">×</button>
+</div> }
+</div> }
+</div>
+
+@code {
+private List<ShoppingItem> items = []; private bool loaded; private string? newName, newQuantity; private Guid? editingId; private string? editName, editQuantity, editCategory;
+protected override async Task OnAfterRenderAsync(bool firstRender) { if (!firstRender) return; items = (await Shopping.GetAllAsync()).ToList(); loaded = true; StateHasChanged(); }
+private async Task Refresh() => items = (await Shopping.GetAllAsync()).ToList();
+private async Task Add() { if (string.IsNullOrWhiteSpace(newName)) return; await Shopping.AddAsync(newName,newQuantity); newName=newQuantity=null; await Refresh(); }
+private async Task Toggle(Guid id) { await Shopping.ToggleAsync(id); await Refresh(); }
+private void BeginEdit(ShoppingItem i) { editingId=i.Id; editName=i.Name; editQuantity=i.Quantity; editCategory=i.Category; }
+private async Task Save(Guid id) { if (string.IsNullOrWhiteSpace(editName)) return; await Shopping.UpdateAsync(id,editName,editQuantity,editCategory); editingId=null; await Refresh(); }
+private async Task Remove(Guid id) { await Shopping.RemoveAsync(id); await Refresh(); }
+private static string Meta(ShoppingItem i) => string.Join(" · ", new[]{i.Quantity,i.Category}.Where(x=>!string.IsNullOrWhiteSpace(x)));
+}
