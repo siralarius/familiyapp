@@ -11,6 +11,14 @@ public sealed class ShoppingListService(IShoppingRepository repository)
         await repository.SaveAsync(items);
     }
 
+    public async Task AddIfMissingAsync(string name, string? quantity = null, string? category = null)
+    {
+        var items = (await repository.GetAllAsync()).ToList();
+        if (items.Any(x => !x.IsChecked && string.Equals(x.Name, name.Trim(), StringComparison.OrdinalIgnoreCase))) return;
+        items.Add(ShoppingItem.Create(name, quantity, category));
+        await repository.SaveAsync(items);
+    }
+
     public async Task ToggleAsync(Guid id)
     {
         var items = (await repository.GetAllAsync()).ToList();
