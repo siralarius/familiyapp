@@ -1,10 +1,11 @@
 <Router AppAssembly="@typeof(Routes).Assembly">
     <Found Context="routeData">
-        <RouteView RouteData="@routeData" />
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(FamilyApp.Shared.Components.Layout.AppShell)" />
         <FocusOnNavigate RouteData="@routeData" Selector="h1" />
     </Found>
     <NotFound>
-        <PageTitle>Not found</PageTitle>
-        <main class="page"><h1>Not found</h1><p>That page doesn't exist.</p></main>
+        <LayoutView Layout="@typeof(FamilyApp.Shared.Components.Layout.AppShell)">
+            <div class="page"><h1>Not found</h1><p>That page doesn't exist.</p></div>
+        </LayoutView>
     </NotFound>
 </Router>
