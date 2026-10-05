@@ -114,4 +114,6 @@ Implementation work should be delivered in small reviewable pull requests so eac
 - Issue #1 is the Iteration 1 parent for issues #10–#14. Issue #2 is the separate Iteration 2 milestone and follows Iteration 1 stabilization.
 - Issue #10 adds an in-process two-device simulator. Automated tests cover independent replicas, bidirectional missing-change exchange, retry idempotency and deterministic convergence without iOS networking.
 - Issue #11 adds a QR-based ECDH pairing flow. QR payloads contain public keys and nonces; private keys and derived peer secrets use the secure pairing-store abstraction.
+- Issue #12 adds a Bonjour peer-discovery contract and iOS `NWBrowser` adapter, with local-network permission metadata for `_familyapp-sync._tcp`.
+- The MAUI host is still a placeholder excluded from the solution, so iOS adapter compilation and two-iPhone acceptance must be verified when that host is introduced.
 - Browser and automated checks do not replace the two-iPhone acceptance checks required for native pairing, discovery and local transport.
