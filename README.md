@@ -107,3 +107,10 @@ All synchronization must sit behind transport abstractions. Domain features (mea
 - **Iteration 2:** encrypted remote transport for internet/mobile-data synchronization.
 
 Implementation work should be delivered in small reviewable pull requests so each capability can be tested before the next one is added.
+
+## Issue delivery notes
+
+- Deliver each actionable issue on its own `feature/issue-N-*` branch and merge branches into `main` sequentially after CI and the Netlify deployment succeed.
+- Issue #1 is the Iteration 1 parent for issues #10–#14. Issue #2 is the separate Iteration 2 milestone and follows Iteration 1 stabilization.
+- Issue #10 adds an in-process two-device simulator. Automated tests cover independent replicas, bidirectional missing-change exchange, retry idempotency and deterministic convergence without iOS networking.
+- Browser and automated checks do not replace the two-iPhone acceptance checks required for native pairing, discovery and local transport.
