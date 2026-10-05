@@ -4,5 +4,6 @@
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.0" PrivateAssets="all" />
     <ProjectReference Include="../FamilyApp.Shared/FamilyApp.Shared.csproj" />
+    <ProjectReference Include="../FamilyApp.Core/FamilyApp.Core.csproj" />
   </ItemGroup>
 </Project>
