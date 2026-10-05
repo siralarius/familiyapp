@@ -5,9 +5,11 @@
     <Project Path="src/FamilyApp.Sync/FamilyApp.Sync.csproj" />
     <Project Path="src/FamilyApp.Shared/FamilyApp.Shared.csproj" />
     <Project Path="src/FamilyApp.Web/FamilyApp.Web.csproj" />
+    <Project Path="src/FamilyApp.Relay/FamilyApp.Relay.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FamilyApp.Core.Tests/FamilyApp.Core.Tests.csproj" />
+    <Project Path="tests/FamilyApp.Relay.Tests/FamilyApp.Relay.Tests.csproj" />
     <Project Path="tests/FamilyApp.Sync.Tests/FamilyApp.Sync.Tests.csproj" />
   </Folder>
 </Solution>
