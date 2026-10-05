@@ -4,11 +4,11 @@ Family App is developed in small pull requests under the Iteration 1 roadmap.
 
 ## Hosts
 
-- FamilyApp.Shared contains host-agnostic Razor UI.
-- FamilyApp.Web provides fast laptop/browser development.
-- FamilyApp.Maui will be the native iPhone host and will be added with the MAUI workload in the bootstrap follow-up.
-- Netlify deploy previews will use a static/WebAssembly-compatible preview host so they don't depend on an ASP.NET Core server runtime.
+- `FamilyApp.Shared` contains host-agnostic Razor UI.
+- `FamilyApp.Web` is a standalone Blazor WebAssembly host for laptop development and Netlify PR previews.
+- `FamilyApp.Maui` is the native iPhone host and will reference the same shared UI.
+- Native persistence, secure storage and peer networking remain behind platform abstractions and are not simulated as production capabilities in the preview.
 
 ## Validation
 
-Every pull request must build and run automated tests in GitHub Actions. Native-only capabilities are isolated behind interfaces and validated on iPhones when their milestone is reached.
+Every pull request must build and run automated tests in GitHub Actions. Netlify publishes `FamilyApp.Web` as static WebAssembly files. Native-only capabilities are validated on iPhones when their milestone is reached.
