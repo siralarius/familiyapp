@@ -12,7 +12,7 @@ public class PeerDiscoveryContractTests
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var discovery = new FakePeerDiscovery();
-        var endpoint = new PeerServiceEndpoint("Phone A", PeerDiscoveryDefaults.BonjourServiceType, "local.");
+        var endpoint = new PeerServiceEndpoint(PeerServiceEndpoint.CreateServiceName(Guid.NewGuid()), PeerDiscoveryDefaults.BonjourServiceType, "local.");
         await using var events = discovery.WatchAsync(cancellationToken).GetAsyncEnumerator(cancellationToken);
 
         discovery.Publish(new PeerDiscoveryEvent(PeerDiscoveryEventKind.Available, endpoint));
@@ -32,10 +32,12 @@ public class PeerDiscoveryContractTests
     [Fact]
     public void Bonjour_service_type_uses_tcp_and_has_no_fixed_host_address()
     {
-        var endpoint = new PeerServiceEndpoint("Phone A", PeerDiscoveryDefaults.BonjourServiceType, "local.");
+        var deviceId = Guid.NewGuid();
+        var endpoint = new PeerServiceEndpoint(PeerServiceEndpoint.CreateServiceName(deviceId), PeerDiscoveryDefaults.BonjourServiceType, "local.");
 
         Assert.Equal("_familyapp-sync._tcp", endpoint.Type);
-        Assert.Equal("Phone A._familyapp-sync._tcp.local.", endpoint.Id);
+        Assert.Equal(deviceId, endpoint.DeviceId);
+        Assert.Contains("_familyapp-sync._tcp.local.", endpoint.Id, StringComparison.Ordinal);
     }
 
     private sealed class FakePeerDiscovery : IPeerDiscovery
