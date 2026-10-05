@@ -6,6 +6,10 @@ window.familyGoogleCalendar = (() => {
     return document.querySelector('meta[name="google-client-id"]')?.content?.trim() || "";
   }
 
+  function isConfigured() {
+    return clientId().length > 0;
+  }
+
   async function connect() {
     const id = clientId();
     if (!id) throw new Error("Google Calendar is not configured yet.");
@@ -56,5 +60,5 @@ window.familyGoogleCalendar = (() => {
     return all;
   }
 
-  return { connect, disconnect, calendars, events };
+  return { isConfigured, connect, disconnect, calendars, events };
 })();
