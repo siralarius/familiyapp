@@ -1,4 +1,5 @@
 using FamilyApp.Core.Inventory;
+using FamilyApp.Core.Meals;
 using FamilyApp.Core.Shopping;
 using FamilyApp.Shared.Components;
 using FamilyApp.Web.Storage;
@@ -12,4 +13,6 @@ builder.Services.AddScoped<IShoppingRepository, BrowserShoppingRepository>();
 builder.Services.AddScoped<ShoppingListService>();
 builder.Services.AddScoped<IInventoryRepository, BrowserInventoryRepository>();
 builder.Services.AddScoped<InventoryService>();
+builder.Services.AddScoped<IMealPlanRepository, BrowserMealPlanRepository>();
+builder.Services.AddScoped<MealPlanService>();
 await builder.Build().RunAsync();
