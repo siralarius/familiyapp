@@ -1,0 +1,16 @@
+@inherits LayoutComponentBase
+
+<div class="app-shell">
+    <aside class="sidebar">
+        <a class="brand" href="/" aria-label="Family App home"><span class="brand-mark">F</span><span>Family</span></a>
+        <NavMenu />
+    </aside>
+    <div class="app-frame">
+        <header class="topbar">
+            <a class="brand mobile-brand" href="/" aria-label="Family App home"><span class="brand-mark">F</span><span>Family</span></a>
+            <span class="family-label">Our home</span>
+        </header>
+        <main class="content">@Body</main>
+        <div class="mobile-nav"><NavMenu /></div>
+    </div>
+</div>
