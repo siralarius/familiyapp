@@ -116,5 +116,7 @@ Implementation work should be delivered in small reviewable pull requests so eac
 - Issue #11 adds a QR-based ECDH pairing flow. QR payloads contain public keys and nonces; private keys and derived peer secrets use the secure pairing-store abstraction.
 - Issue #12 adds a Bonjour peer-discovery contract and iOS `NWBrowser` adapter, with local-network permission metadata for `_familyapp-sync._tcp`.
 - Issue #13 adds a trusted-peer sync coordinator and AES-GCM change exchange bound to family and device identities, with retryable discovery/connection handling.
+- Issue #14 adds sync-state and last-successful-sync UX with persisted status restoration and tests for reconnect, duplicate delivery and restart behavior.
+- The browser preview persists only the nonsecret last-sync timestamp in local storage; live iPhone sync status requires the future MAUI host to register its native pairing, discovery and transport services.
 - The MAUI host is still a placeholder excluded from the solution, so iOS adapter compilation and two-iPhone acceptance must be verified when that host is introduced.
 - Browser and automated checks do not replace the two-iPhone acceptance checks required for native pairing, discovery and local transport.

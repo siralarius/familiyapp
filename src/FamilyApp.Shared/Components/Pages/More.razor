@@ -1,3 +1,52 @@
 @page "/more"
+@using FamilyApp.Sync.Transport
+@inject PeerSyncStatusService SyncStatus
+@implements IDisposable
 <PageTitle>More · Family</PageTitle>
-<div class="page"><header class="page-heading"><p class="eyebrow">Household</p><h1>More</h1><p class="lede">Inventory, family settings and device sync.</p></header><div class="settings-list"><a class="settings-row settings-link" href="/inventory"><div><strong>Inventory</strong><span>Track household essentials</span></div><span>→</span></a><div class="settings-row muted"><div><strong>Device sync</strong><span>Coming later in Iteration 1</span></div><span>→</span></div></div></div>
+<div class="page">
+	<header class="page-heading"><p class="eyebrow">Household</p><h1>More</h1><p class="lede">Inventory and trusted family devices.</p></header>
+	<section class="sync-status-panel" aria-live="polite">
+		<div class="sync-status-heading">
+			<div><p class="card-label">Device sync</p><h2>@StatusLabel</h2></div>
+			<span class="sync-status-indicator @StatusClass" aria-label="@StatusLabel"></span>
+		</div>
+		<p class="sync-last-success">Last successful sync <time>@LastSyncLabel</time></p>
+		@if (SyncStatus.PersistenceWarning is not null)
+		{
+			<p class="sync-warning">@SyncStatus.PersistenceWarning</p>
+		}
+	</section>
+	<div class="settings-list">
+		<a class="settings-row settings-link" href="/inventory"><div><strong>Inventory</strong><span>Track household essentials</span></div><span>→</span></a>
+	</div>
+</div>
+
+@code {
+	private string StatusLabel => SyncStatus.LatestStatus?.State switch
+	{
+		PeerSyncState.Synchronized => "Synced",
+		PeerSyncState.Retrying => "Reconnecting",
+		PeerSyncState.Rejected => "Pairing required",
+		_ => "Waiting for a trusted device"
+	};
+
+	private string StatusClass => SyncStatus.LatestStatus?.State switch
+	{
+		PeerSyncState.Synchronized => "is-synced",
+		PeerSyncState.Retrying => "is-retrying",
+		PeerSyncState.Rejected => "is-rejected",
+		_ => "is-idle"
+	};
+
+	private string LastSyncLabel => SyncStatus.LastSuccessfulSyncAtUtc?.ToLocalTime().ToString("g") ?? "Never";
+
+	protected override async Task OnInitializedAsync()
+	{
+		SyncStatus.Changed += OnStatusChanged;
+		await SyncStatus.InitializeAsync();
+	}
+
+	private void OnStatusChanged() => _ = InvokeAsync(StateHasChanged);
+
+	public void Dispose() => SyncStatus.Changed -= OnStatusChanged;
+}

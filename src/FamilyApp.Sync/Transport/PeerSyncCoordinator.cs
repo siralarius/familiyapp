@@ -14,6 +14,7 @@ public sealed class PeerSyncCoordinator
     private readonly PairingCoordinator _pairing;
     private readonly ChangeLogEngine _changeLog;
     private readonly IPeerListener? _listener;
+    private readonly PeerSyncStatusService? _statusService;
 
     public PeerSyncCoordinator(
         FamilyDeviceIdentity identity,
@@ -21,7 +22,8 @@ public sealed class PeerSyncCoordinator
         IPeerTransport transport,
         PairingCoordinator pairing,
         ChangeLogEngine changeLog,
-        IPeerListener? listener = null)
+        IPeerListener? listener = null,
+        PeerSyncStatusService? statusService = null)
     {
         ArgumentNullException.ThrowIfNull(identity);
         ArgumentNullException.ThrowIfNull(discovery);
@@ -34,6 +36,7 @@ public sealed class PeerSyncCoordinator
         _pairing = pairing;
         _changeLog = changeLog;
         _listener = listener;
+        _statusService = statusService;
     }
 
     public event Action<PeerSyncStatus>? StatusChanged;
@@ -63,7 +66,7 @@ public sealed class PeerSyncCoordinator
                 var trustedSecret = await _pairing.ReadTrustedSecretAsync(_identity, peerDeviceId, cancellationToken);
                 if (trustedSecret is null)
                 {
-                    Report(peerDeviceId, PeerSyncState.Rejected, "Peer is not paired.");
+                    await ReportAsync(peerDeviceId, PeerSyncState.Rejected, "Peer is not paired.", cancellationToken);
                     return;
                 }
 
@@ -75,7 +78,7 @@ public sealed class PeerSyncCoordinator
                     var response = EncryptedPeerSyncSession.Encrypt(
                         _changeLog.Changes.ToArray(), _identity.FamilyId, _identity.DeviceId, peerDeviceId, trustedSecret);
                     await connection.SendAsync(response, cancellationToken);
-                    Report(peerDeviceId, PeerSyncState.Synchronized);
+                    await ReportAsync(peerDeviceId, PeerSyncState.Synchronized, cancellationToken: cancellationToken);
                 }
                 finally
                 {
@@ -88,11 +91,11 @@ public sealed class PeerSyncCoordinator
             }
             catch (CryptographicException exception)
             {
-                Report(Guid.Empty, PeerSyncState.Rejected, exception.GetType().Name);
+                await ReportAsync(Guid.Empty, PeerSyncState.Rejected, exception.GetType().Name, cancellationToken);
             }
             catch (Exception exception)
             {
-                Report(Guid.Empty, PeerSyncState.Retrying, exception.GetType().Name);
+                await ReportAsync(Guid.Empty, PeerSyncState.Retrying, exception.GetType().Name, cancellationToken);
             }
         }
     }
@@ -120,14 +123,14 @@ public sealed class PeerSyncCoordinator
         var peerDeviceId = peer.DeviceId;
         if (peerDeviceId is null || peerDeviceId == _identity.DeviceId)
         {
-            Report(Guid.Empty, PeerSyncState.Rejected, "Peer identity is invalid.");
+            await ReportAsync(Guid.Empty, PeerSyncState.Rejected, "Peer identity is invalid.", cancellationToken);
             return;
         }
 
         var trustedSecret = await _pairing.ReadTrustedSecretAsync(_identity, peerDeviceId.Value, cancellationToken);
         if (trustedSecret is null)
         {
-            Report(peerDeviceId.Value, PeerSyncState.Rejected, "Peer is not paired.");
+            await ReportAsync(peerDeviceId.Value, PeerSyncState.Rejected, "Peer is not paired.", cancellationToken);
             return;
         }
 
@@ -143,7 +146,7 @@ public sealed class PeerSyncCoordinator
                 peerDeviceId.Value,
                 trustedSecret,
                 cancellationToken);
-            Report(peerDeviceId.Value, PeerSyncState.Synchronized);
+            await ReportAsync(peerDeviceId.Value, PeerSyncState.Synchronized, cancellationToken: cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -151,7 +154,7 @@ public sealed class PeerSyncCoordinator
         }
         catch (Exception exception)
         {
-            Report(peerDeviceId.Value, PeerSyncState.Retrying, exception.GetType().Name);
+            await ReportAsync(peerDeviceId.Value, PeerSyncState.Retrying, exception.GetType().Name, cancellationToken);
         }
         finally
         {
@@ -159,8 +162,17 @@ public sealed class PeerSyncCoordinator
         }
     }
 
-    private void Report(Guid peerDeviceId, PeerSyncState state, string? detail = null)
-        => StatusChanged?.Invoke(new PeerSyncStatus(peerDeviceId, state, detail));
+    private async Task ReportAsync(
+        Guid peerDeviceId,
+        PeerSyncState state,
+        string? detail = null,
+        CancellationToken cancellationToken = default)
+    {
+        var status = new PeerSyncStatus(peerDeviceId, state, detail, DateTimeOffset.UtcNow);
+        StatusChanged?.Invoke(status);
+        if (_statusService is not null)
+            await _statusService.RecordAsync(status, cancellationToken);
+    }
 }
 
 public sealed class EncryptedPeerSyncSession
