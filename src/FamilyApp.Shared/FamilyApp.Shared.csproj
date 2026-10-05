@@ -6,5 +6,6 @@
     <SupportedPlatform Include="browser" />
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.0" />
     <ProjectReference Include="../FamilyApp.Core/FamilyApp.Core.csproj" />
+    <ProjectReference Include="../FamilyApp.Sync/FamilyApp.Sync.csproj" />
   </ItemGroup>
 </Project>

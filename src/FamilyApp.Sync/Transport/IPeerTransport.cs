@@ -25,4 +25,8 @@ public enum PeerSyncState
     Retrying
 }
 
-public sealed record PeerSyncStatus(Guid PeerDeviceId, PeerSyncState State, string? Detail = null);
+public sealed record PeerSyncStatus(
+    Guid PeerDeviceId,
+    PeerSyncState State,
+    string? Detail,
+    DateTimeOffset TimestampUtc);
