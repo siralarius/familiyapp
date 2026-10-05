@@ -1,3 +1,4 @@
+using FamilyApp.Core.Calendar;
 using FamilyApp.Core.Inventory;
 using FamilyApp.Core.Meals;
 using FamilyApp.Core.Shopping;
@@ -15,4 +16,6 @@ builder.Services.AddScoped<IInventoryRepository, BrowserInventoryRepository>();
 builder.Services.AddScoped<InventoryService>();
 builder.Services.AddScoped<IMealPlanRepository, BrowserMealPlanRepository>();
 builder.Services.AddScoped<MealPlanService>();
+builder.Services.AddScoped<IFamilyEventRepository, BrowserFamilyEventRepository>();
+builder.Services.AddScoped<FamilyCalendarService>();
 await builder.Build().RunAsync();
