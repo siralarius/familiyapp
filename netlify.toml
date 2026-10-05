@@ -1,0 +1,8 @@
+[build]
+  command = "dotnet publish src/FamilyApp.Web/FamilyApp.Web.csproj -c Release -o publish"
+  publish = "publish/wwwroot"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

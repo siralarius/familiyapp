@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FamilyApp.Core/FamilyApp.Core.csproj" />
+    <Project Path="src/FamilyApp.Data/FamilyApp.Data.csproj" />
+    <Project Path="src/FamilyApp.Sync/FamilyApp.Sync.csproj" />
+    <Project Path="src/FamilyApp.Shared/FamilyApp.Shared.csproj" />
+    <Project Path="src/FamilyApp.Web/FamilyApp.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FamilyApp.Core.Tests/FamilyApp.Core.Tests.csproj" />
+    <Project Path="tests/FamilyApp.Sync.Tests/FamilyApp.Sync.Tests.csproj" />
+  </Folder>
+</Solution>
