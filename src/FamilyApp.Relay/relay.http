@@ -1,0 +1,32 @@
+@baseUrl = https://localhost:5001
+@relayAccessToken = {{$dotenv RELAY_ACCESS_TOKEN}}
+@recipientDeviceId = 11111111-1111-1111-1111-111111111111
+@messageId = 22222222-2222-2222-2222-222222222222
+
+### Queue an opaque encrypted message
+POST {{baseUrl}}/api/v1/relay/messages
+Authorization: Bearer {{relayAccessToken}}
+Content-Type: application/json
+
+{
+  "messageId": "{{messageId}}",
+  "recipientDeviceId": "{{recipientDeviceId}}",
+  "expiresAtUtc": "2026-10-12T12:00:00Z",
+  "ciphertext": "AQIDBA=="
+}
+
+### Read messages addressed to the authenticated device
+GET {{baseUrl}}/api/v1/relay/messages
+Authorization: Bearer {{relayAccessToken}}
+
+### Read one addressed message
+GET {{baseUrl}}/api/v1/relay/messages/{{messageId}}
+Authorization: Bearer {{relayAccessToken}}
+
+### Acknowledge and delete a delivered message
+DELETE {{baseUrl}}/api/v1/relay/messages/{{messageId}}
+Authorization: Bearer {{relayAccessToken}}
+
+### Revoke a device (token must include family_role=admin)
+POST {{baseUrl}}/api/v1/relay/devices/{{recipientDeviceId}}/revoke
+Authorization: Bearer {{relayAccessToken}}

@@ -6,6 +6,7 @@ public interface IPeerConnection : IAsyncDisposable
 {
     Task SendAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default);
     Task<ReadOnlyMemory<byte>> ReceiveAsync(CancellationToken cancellationToken = default);
+    Task AcknowledgeAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 }
 
 public interface IPeerTransport

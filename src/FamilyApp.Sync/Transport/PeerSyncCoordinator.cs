@@ -75,6 +75,7 @@ public sealed class PeerSyncCoordinator
                     var remoteChanges = EncryptedPeerSyncSession.Decrypt(
                         incoming.Span, _identity.FamilyId, peerDeviceId, _identity.DeviceId, trustedSecret);
                     _changeLog.Merge(remoteChanges);
+                    await connection.AcknowledgeAsync(cancellationToken);
                     var response = EncryptedPeerSyncSession.Encrypt(
                         _changeLog.Changes.ToArray(), _identity.FamilyId, _identity.DeviceId, peerDeviceId, trustedSecret);
                     await connection.SendAsync(response, cancellationToken);
@@ -200,7 +201,9 @@ public sealed class EncryptedPeerSyncSession
         await connection.SendAsync(outbound, cancellationToken);
         var inbound = await connection.ReceiveAsync(cancellationToken);
         var remoteChanges = Decrypt(inbound.Span, familyId, peerDeviceId, localDeviceId, trustedSecret.Span);
-        return changeLog.Merge(remoteChanges);
+        var applied = changeLog.Merge(remoteChanges);
+        await connection.AcknowledgeAsync(cancellationToken);
+        return applied;
     }
 
     internal static byte[] Encrypt(
