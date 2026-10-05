@@ -1,5 +1,5 @@
 [build]
-  command = "dotnet publish src/FamilyApp.Web/FamilyApp.Web.csproj -c Release -o publish"
+  command = "bash scripts/netlify-build.sh"
   publish = "publish/wwwroot"
 
 [[redirects]]
