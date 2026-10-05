@@ -1,3 +1,5 @@
+using Xunit;
+
 namespace FamilyApp.Core.Tests;
 
 public class ArchitectureSmokeTests
