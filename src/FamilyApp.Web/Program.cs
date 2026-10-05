@@ -1,10 +1,8 @@
 using FamilyApp.Shared.Components;
+using Microsoft.AspNetCore.Components.Web;
+using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 
-var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddRazorComponents().AddInteractiveServerComponents();
-var app = builder.Build();
-if (!app.Environment.IsDevelopment()) app.UseExceptionHandler("/Error", createScopeForErrors: true);
-app.UseAntiforgery();
-app.MapStaticAssets();
-app.MapRazorComponents<App>().AddInteractiveServerRenderMode().AddAdditionalAssemblies(typeof(Routes).Assembly);
-app.Run();
+var builder = WebAssemblyHostBuilder.CreateDefault(args);
+builder.RootComponents.Add<Routes>("#app");
+builder.RootComponents.Add<HeadOutlet>("head::after");
+await builder.Build().RunAsync();
