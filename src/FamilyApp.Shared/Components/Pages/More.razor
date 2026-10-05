@@ -1,6 +1,7 @@
 @page "/more"
 @using FamilyApp.Sync.Transport
 @inject PeerSyncStatusService SyncStatus
+@inject IServiceProvider Services
 @implements IDisposable
 <PageTitle>More · Family</PageTitle>
 <div class="page">
@@ -17,6 +18,10 @@
 		}
 	</section>
 	<div class="settings-list">
+		@if (Services.GetService(typeof(FamilyApp.Sync.Pairing.IDevicePairingService)) is not null)
+		{
+			<a class="settings-row settings-link" href="/devices"><div><strong>Family devices</strong><span>Pair a phone for encrypted sync</span></div><span>→</span></a>
+		}
 		<a class="settings-row settings-link" href="/inventory"><div><strong>Inventory</strong><span>Track household essentials</span></div><span>→</span></a>
 	</div>
 </div>

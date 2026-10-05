@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using CoreFoundation;
 using FamilyApp.Sync.Discovery;
 using Network;
 
@@ -10,15 +11,20 @@ public sealed class BonjourPeerDiscovery : IPeerDiscovery
     public async IAsyncEnumerable<PeerDiscoveryEvent> WatchAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var events = Channel.CreateUnbounded<PeerDiscoveryEvent>();
+        var events = Channel.CreateBounded<PeerDiscoveryEvent>(new BoundedChannelOptions(256)
+        { FullMode = BoundedChannelFullMode.DropOldest });
+        using var queue = new DispatchQueue("familyapp.discovery");
+        using var parameters = NWParameters.CreateTcp();
         using var browser = new NWBrowser(
             NWBrowserDescriptor.CreateBonjourService(PeerDiscoveryDefaults.BonjourServiceType),
-            new NWParameters());
+            parameters);
 
-        browser.IndividualChangesDelegate = (current, previous) =>
+        browser.IndividualChangesDelegate = (previous, current) =>
         {
             var result = current ?? previous;
-            if (result is null || !TryCreateEndpoint(result.EndPoint, out var endpoint))
+            if (result is null) return;
+            using var nativeEndpoint = result.EndPoint;
+            if (!TryCreateEndpoint(nativeEndpoint, out var endpoint))
                 return;
 
             var kind = current is null ? PeerDiscoveryEventKind.Lost : PeerDiscoveryEventKind.Available;
@@ -29,8 +35,9 @@ public sealed class BonjourPeerDiscovery : IPeerDiscovery
             events.Writer.TryWrite(new PeerDiscoveryEvent(
                 PeerDiscoveryEventKind.StateChanged,
                 State: state.ToString(),
-                Error: error?.LocalizedDescription)));
+                Error: error?.ErrorCode.ToString())));
 
+        browser.SetDispatchQueue(queue);
         browser.Start();
         try
         {

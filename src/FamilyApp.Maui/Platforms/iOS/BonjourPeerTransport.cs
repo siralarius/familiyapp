@@ -1,6 +1,8 @@
+using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
+using CoreFoundation;
 using FamilyApp.Sync.Discovery;
 using FamilyApp.Sync.Transport;
 using Network;
@@ -9,59 +11,50 @@ namespace FamilyApp.Maui.Platforms.iOS;
 
 public sealed class BonjourPeerTransport : IPeerTransport
 {
-    public async Task<IPeerConnection> ConnectAsync(
-        PeerServiceEndpoint peer,
-        CancellationToken cancellationToken = default)
+    public async Task<IPeerConnection> ConnectAsync(PeerServiceEndpoint peer, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(peer);
-        if (!string.Equals(peer.Type, PeerDiscoveryDefaults.BonjourServiceType, StringComparison.Ordinal))
+        if (peer.Type != PeerDiscoveryDefaults.BonjourServiceType)
             throw new ArgumentException("Unsupported Bonjour service type.", nameof(peer));
-
-        var endpoint = NWEndpoint.CreateBonjourService(peer.Name, peer.Type, peer.Domain)
+        using var endpoint = NWEndpoint.CreateBonjourService(peer.Name, peer.Type, peer.Domain)
             ?? throw new InvalidOperationException("The Bonjour endpoint could not be created.");
-        var connection = new BonjourPeerConnection(new NWConnection(endpoint, new NWParameters()));
-        try
-        {
-            await connection.StartAsync(cancellationToken);
-            return connection;
-        }
-        catch
-        {
-            await connection.DisposeAsync();
-            throw;
-        }
+        using var parameters = NWParameters.CreateTcp();
+        var connection = new BonjourPeerConnection(new NWConnection(endpoint, parameters));
+        try { await connection.StartAsync(cancellationToken); return connection; }
+        catch { await connection.DisposeAsync(); throw; }
     }
 }
 
 public sealed class BonjourPeerListener : IPeerListener, IAsyncDisposable
 {
     private readonly NWListener _listener;
-    private readonly Channel<IPeerConnection> _incoming = Channel.CreateUnbounded<IPeerConnection>();
+    private readonly DispatchQueue _queue = new("familyapp.listener");
+    private readonly Channel<IPeerConnection> _incoming = Channel.CreateBounded<IPeerConnection>(16);
     private readonly CancellationTokenSource _shutdown = new();
 
     public BonjourPeerListener(Guid deviceId)
     {
-        _listener = NWListener.Create(new NWParameters());
-        var descriptor = NWAdvertiseDescriptor.CreateBonjourService(
-            PeerServiceEndpoint.CreateServiceName(deviceId),
-            PeerDiscoveryDefaults.BonjourServiceType,
-            "local.") ?? throw new InvalidOperationException("The Bonjour service could not be advertised.");
-
+        using var parameters = NWParameters.CreateTcp();
+        _listener = NWListener.Create(parameters)
+            ?? throw new InvalidOperationException("The Bonjour listener could not be created.");
+        using var descriptor = NWAdvertiseDescriptor.CreateBonjourService(
+            PeerServiceEndpoint.CreateServiceName(deviceId), PeerDiscoveryDefaults.BonjourServiceType, "local.")
+            ?? throw new InvalidOperationException("The Bonjour service could not be advertised.");
         _listener.SetAdvertiseDescriptor(descriptor);
         _listener.SetNewConnectionHandler(connection => _ = QueueConnectionAsync(connection));
-        _listener.SetStateChangedHandler((state, error) =>
+        _listener.SetStateChangedHandler((state, _) =>
         {
-            if (string.Equals(state.ToString(), "Failed", StringComparison.Ordinal))
-                _incoming.Writer.TryComplete(new IOException(error?.LocalizedDescription ?? "The Bonjour listener failed."));
+            if (state == NWListenerState.Failed)
+                _incoming.Writer.TryComplete(new IOException("The Bonjour listener failed."));
         });
+        _listener.SetQueue(_queue);
         _listener.Start();
     }
 
     public async IAsyncEnumerable<IPeerConnection> AcceptAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await foreach (var connection in _incoming.Reader.ReadAllAsync(cancellationToken))
-            yield return connection;
+        await foreach (var connection in _incoming.Reader.ReadAllAsync(cancellationToken)) yield return connection;
     }
 
     public async ValueTask DisposeAsync()
@@ -69,10 +62,9 @@ public sealed class BonjourPeerListener : IPeerListener, IAsyncDisposable
         _shutdown.Cancel();
         _listener.Cancel();
         _listener.Dispose();
+        _queue.Dispose();
         _incoming.Writer.TryComplete();
-        while (_incoming.Reader.TryRead(out var connection))
-            await connection.DisposeAsync();
-        _shutdown.Dispose();
+        while (_incoming.Reader.TryRead(out var connection)) await connection.DisposeAsync();
     }
 
     private async Task QueueConnectionAsync(NWConnection nativeConnection)
@@ -80,99 +72,89 @@ public sealed class BonjourPeerListener : IPeerListener, IAsyncDisposable
         var connection = new BonjourPeerConnection(nativeConnection);
         try
         {
-            await connection.StartAsync(_shutdown.Token);
-            await _incoming.Writer.WriteAsync(connection, _shutdown.Token);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
+            timeout.CancelAfter(TimeSpan.FromSeconds(15));
+            await connection.StartAsync(timeout.Token);
+            if (!_incoming.Writer.TryWrite(connection)) await connection.DisposeAsync();
         }
-        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
-        {
-            await connection.DisposeAsync();
-        }
-        catch (Exception exception)
-        {
-            await connection.DisposeAsync();
-            _incoming.Writer.TryWrite(new FailedPeerConnection(exception));
-        }
+        catch { await connection.DisposeAsync(); }
     }
 }
 
 internal sealed class BonjourPeerConnection(NWConnection connection) : IPeerConnection
 {
     private const int MaximumMessageLength = 16 * 1024 * 1024;
+    private readonly DispatchQueue _queue = new("familyapp.connection");
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        connection.SetStateChangeHandler((state, error) =>
+        connection.SetStateChangeHandler((state, _) =>
         {
-            switch (state.ToString())
-            {
-                case "Ready":
-                    started.TrySetResult();
-                    break;
-                case "Failed":
-                case "Cancelled":
-                    started.TrySetException(new IOException(error?.LocalizedDescription ?? $"Peer connection {state}.") );
-                    break;
-            }
+            if (state == NWConnectionState.Ready) started.TrySetResult();
+            else if (state is NWConnectionState.Failed or NWConnectionState.Cancelled)
+                started.TrySetException(new IOException($"Peer connection {state}."));
         });
+        connection.SetQueue(_queue);
         connection.Start();
-        await started.Task.WaitAsync(cancellationToken);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(15), cancellationToken);
     }
 
     public async Task SendAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default)
     {
-        if (message.Length > MaximumMessageLength) throw new InvalidDataException("The sync message is too large.");
+        if (message.Length is 0 or > MaximumMessageLength) throw new InvalidDataException("Invalid sync message length.");
+        // TCP is a byte stream, so frame each message explicitly.
+        var frame = new byte[sizeof(int) + message.Length];
+        BinaryPrimitives.WriteInt32BigEndian(frame, message.Length);
+        message.Span.CopyTo(frame.AsSpan(sizeof(int)));
         var sent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        connection.Send(message.ToArray(), NWContentContext.DefaultMessage, true, error =>
+        connection.Send(frame, NWContentContext.DefaultMessage, true, error =>
         {
-            if (error is null)
-                sent.TrySetResult();
-            else
-                sent.TrySetException(new IOException(error.LocalizedDescription));
+            if (error is null) sent.TrySetResult();
+            else sent.TrySetException(new IOException("Peer send failed."));
         });
-        await sent.Task.WaitAsync(cancellationToken);
+        await sent.Task.WaitAsync(TimeSpan.FromSeconds(15), cancellationToken);
     }
 
     public async Task<ReadOnlyMemory<byte>> ReceiveAsync(CancellationToken cancellationToken = default)
     {
-        var received = new TaskCompletionSource<ReadOnlyMemory<byte>>(TaskCreationOptions.RunContinuationsAsynchronously);
-        connection.ReceiveMessage((data, dataSize, _, isComplete, error) =>
+        var header = await ReadExactlyAsync(sizeof(int), cancellationToken);
+        var length = BinaryPrimitives.ReadInt32BigEndian(header);
+        if (length is <= 0 or > MaximumMessageLength) throw new InvalidDataException("Invalid sync message length.");
+        return await ReadExactlyAsync(length, cancellationToken);
+    }
+
+    private async Task<byte[]> ReadExactlyAsync(int length, CancellationToken cancellationToken)
+    {
+        var buffer = new byte[length];
+        var offset = 0;
+        while (offset < length)
         {
-            if (error is not null)
+            cancellationToken.ThrowIfCancellationRequested();
+            var received = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var destinationOffset = offset;
+            var remaining = length - offset;
+            connection.Receive(1, (uint)remaining, (data, dataSize, _, _, error) =>
             {
-                received.TrySetException(new IOException(error.LocalizedDescription));
-                return;
-            }
-
-            var length = dataSize.ToUInt64();
-            if (!isComplete || data == IntPtr.Zero || length == 0 || length > MaximumMessageLength)
-            {
-                received.TrySetException(new InvalidDataException("The received sync message is invalid."));
-                return;
-            }
-
-            var message = new byte[checked((int)length)];
-            Marshal.Copy(data, message, 0, message.Length);
-            received.TrySetResult(message);
-        });
-        return await received.Task.WaitAsync(cancellationToken);
+                var count = checked((int)dataSize);
+                if (error is not null || data == IntPtr.Zero || count <= 0 || count > remaining)
+                {
+                    received.TrySetException(new IOException("Peer receive failed or connection closed."));
+                    return;
+                }
+                Marshal.Copy(data, buffer, destinationOffset, count);
+                received.TrySetResult(count);
+            });
+            offset += await received.Task.WaitAsync(TimeSpan.FromSeconds(15), cancellationToken);
+        }
+        return buffer;
     }
 
     public ValueTask DisposeAsync()
     {
         connection.Cancel();
         connection.Dispose();
+        _queue.Dispose();
         return ValueTask.CompletedTask;
     }
-}
-
-internal sealed class FailedPeerConnection(Exception exception) : IPeerConnection
-{
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-
-    public Task SendAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default)
-        => Task.FromException(exception);
-
-    public Task<ReadOnlyMemory<byte>> ReceiveAsync(CancellationToken cancellationToken = default)
-        => Task.FromException<ReadOnlyMemory<byte>>(exception);
 }
