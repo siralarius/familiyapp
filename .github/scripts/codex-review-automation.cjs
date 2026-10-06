@@ -18,7 +18,10 @@ function cleanReview(comments, head) {
     const rows = summaries[0].body.split('\n').filter(line => /^\|/.test(line) && /\*\*(?:Code Review|Security Review)\*\*/.test(line));
     const code = rows.find(line => /\*\*Code Review\*\*/.test(line));
     const summaryRef = code && /`([a-f0-9]{7,40})`/.exec(code)?.[1];
-    if (!summaryRef || !head.startsWith(summaryRef) || rows.some(line => !/\*\*Completed\*\*/.test(line))) return;
+    if (!summaryRef || !head.startsWith(summaryRef) || rows.some(line => {
+      const ref = /`([a-f0-9]{7,40})`/.exec(line)?.[1];
+      return !/\*\*Completed\*\*/.test(line) || !ref || !head.startsWith(ref);
+    })) return;
   }
   return comments.filter(isCodex).filter(comment => {
     // The connector varies the friendly sentence; it is not the review verdict.

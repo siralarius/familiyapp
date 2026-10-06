@@ -28,6 +28,12 @@ test('a running review or a summary for a stale commit invalidates clean evidenc
   assert.equal(cleanReview([clean, summary('Running')], head), undefined);
   assert.equal(cleanReview([clean, { ...summary('Completed'), body: summary('Completed').body.replace('6537358', '1111111') }], head), undefined);
 });
+test('every completed review row must cover the current commit', () => {
+  const summary = ref => ({ id: 1, user: bot, body: `<!-- codex-pull-request-review-summary -->\n| **Code Review** | **Completed** | \`6537358\` | Manual |\n| **Security Review** | **Completed** | \`${ref}\` | Manual |` });
+  assert.ok(cleanReview([clean, summary('65373582fb')], head));
+  assert.equal(cleanReview([clean, summary('1111111')], head), undefined);
+  assert.equal(cleanReview([clean, summary('')], head), undefined);
+});
 test('related issues and same-repository issue URLs are recognized without closing them', () => {
   assert.deepEqual(referencedIssueNumbers('<a href="/siralarius/familiyapp/issues/25">#25</a> <a href="/siralarius/familiyapp/issues/1">#1</a> <a href="https://github.com/siralarius/familiyapp/issues/9">link</a>', 'siralarius', 'familiyapp'), [1, 9, 25]);
   assert.deepEqual(referencedIssueNumbers('<a href="https://github.com/other/repo/issues/8">foreign</a>', 'siralarius', 'familiyapp'), []);
