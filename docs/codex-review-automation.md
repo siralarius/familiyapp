@@ -1,56 +1,71 @@
 # Codex review and automatic merging
 
-The developer requests `@codex review` after opening a ready PR and after pushing
-fixes. The coordinator also requests a review once per head commit when no clean
-result is present. It checks on review comments, CI completion, issue label changes,
-manual dispatch, and approximately every five minutes (GitHub schedules can be delayed).
+## Reviews
 
-## Keep an issue or PR for your own merge
+Native Codex reviews and the developer's own `@codex review` comments can start reviews.
+GitHub Actions-authored mentions did not start reviews in this repository, so the
+merge coordinator no longer posts them.
 
-Add the **manual-merge** label to the issue before making its PR ready. You can also
-add it directly to the PR. Any closing issue with this label blocks automatic merge,
-even if the PR itself has no label. Removing the label makes the PR eligible again.
-Create the label in GitHub if it does not exist. For an urgent stop, make the PR a
-draft or disable the coordinator workflow; labels are checked immediately before
-merging but GitHub has no atomic label-and-merge API.
+A recurring check attached to the Codex chat uses the connected GitHub account to
+request missing current-commit reviews. It runs approximately every five minutes
+when Codex can run the local automation. It skips commits with an existing running
+or completed review and records one request per full head SHA. Keep this automation
+active while relying on this fallback. Native review settings with an every-push
+trigger can eventually replace this bridge after that path is verified.
+
+## Reserve merging for yourself
+
+Add **manual-merge** to the PR or an issue referenced by it before making the PR
+ready. Both structured closing links and local issue references in the PR body
+(including `Relates to #123` and same-repository issue URLs) are checked. Related
+parent issues stay open. You do not need to add a closing keyword to permit merging.
+PRs without issue references are eligible, subject to the same review and CI gates.
+
+Labels are checked again immediately before merging. For an urgent stop, make the
+PR a draft or disable the merge workflow; GitHub has no atomic label-and-merge API.
+Removing the label makes the PR eligible again.
 
 ## Merge requirements
 
-- Ready, same-repository PR opened by the repository owner and targeting main.
-- At least one closing issue in this repository (use `Closes #123` in the PR body).
-  Ordinary `Relates to` mentions do not establish an automatic merge link.
-- No manual-merge label on the PR or any closing issue.
-- An explicit clean comment from the authenticated Codex connector bot, whose
-  reviewed commit resolves to the full current head SHA. The observed result is
-  “Didn't find any major issues”; no result, a reaction, or Completed alone is insufficient.
-- No later bot feedback, unresolved review threads, or outstanding changes-requested
-  reviews. Findings remain blocked until addressed and a fresh clean review is available.
+- Ready, same-repository PR authored by siralarius and targeting main.
+- No manual-merge label on the PR or any closing or referenced local issue.
+- Explicit clean result from the authenticated Codex connector bot with a reviewed
+  commit that resolves to the current full head SHA. Friendly wording may vary;
+  the clean verdict and commit identity cannot. Completed alone or a thumbs-up
+  without a commit-bound clean result never authorizes merging.
+- If a summary exists, it must show the current commit's reviews completed.
+- No later bot feedback, unresolved review threads, outstanding changes-requested
+  reviews, or findings submitted by Codex against the current commit.
 - Both .NET CI workflows and Automation tests pass for this PR's current head.
-  Netlify's deploy-preview status succeeds; other reported statuses and checks
-  must not be pending or failing.
-- The branch includes current main and GitHub reports it cleanly mergeable.
+  Netlify deploy-preview succeeds; other reported statuses and checks must not
+  be pending or failing.
+- The branch includes current main, and GitHub reports it cleanly mergeable.
 
-The workflow merges using the full reviewed head SHA. It respects GitHub merge
-restrictions and never overrides branch protections. It uses the built-in
-GITHUB_TOKEN; native GitHub auto-merge does not need to be enabled. Since that token's
-pushes do not trigger push workflows, it explicitly dispatches all three CI workflows
-on main after a successful merge. Netlify remains responsible for its own deployment.
+The coordinator reports why a PR is waiting in its Actions log. It merges using
+the full reviewed SHA and respects GitHub merge restrictions and branch protections.
+It does not fix feature defects or update branches automatically. The developer
+must push fixes or integrate main, then get CI and a review for the resulting commit.
 
-## Activation and validation
+## Post-merge validation
 
-Merge the setup PR manually to activate the workflow. Then use a small issue/PR to
-verify that the GitHub Actions-authored `@codex review` request is accepted by your
-Codex connection. This has not been verified before activation. The developer's
-own request is a fallback; if bot-authored requests are ignored, the PR stays open
-until Codex actually reports a clean review. No personal access token is required.
+GITHUB_TOKEN-generated pushes do not trigger push workflows, so the coordinator
+dispatches all three CI workflows independently after merging. One failed dispatch
+does not stop attempts for the others.
 
-Add manual-merge before readiness for work requiring device acceptance or a personal
-inspection. The merge automation does not establish native-device acceptance.
-Codex's clean result covers the findings it reports; it is not proof that all defect
-severities are absent. Format changes to Codex's result cause merging to stop until
-the parser is deliberately updated.
+A trusted merge-intent receipt is written before merging. On subsequent runs, the
+coordinator examines recently merged PRs with these receipts and retries missing
+dispatches for seven days. Once all three workflows succeed on main, it records a
+validation receipt. If main has advanced, validation runs on the newest main.
+Started but failing CI is left visible for diagnosis, rather than rerun indefinitely.
+Manually merged PRs have normal push-triggered CI and are excluded from receipt recovery.
 
-This setup changes the previous human-only policy: development and review agents
-still do not merge directly. Only the coordinator may merge eligible deliveries;
-manual-merge issues/PRs remain under human control. The existing agent definition
-files are unchanged.
+## Limits
+
+Codex's observed clean result says it found no major issues; this is not proof that
+all defect severities are absent. Unknown result formats, stale commits, API errors,
+and incomplete linked-issue data block merging.
+
+Use manual-merge for native-device acceptance or other work needing personal
+verification. Automated reviews and browser/CI checks do not prove two-iPhone behavior.
+Development and review agents do not merge directly; the repository coordinator
+is responsible for eligible automatic merges. Existing agent definitions are unchanged.
