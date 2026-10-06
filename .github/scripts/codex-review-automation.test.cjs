@@ -29,11 +29,14 @@ test('a running review or a summary for a stale commit invalidates clean evidenc
   assert.equal(cleanReview([clean, { ...summary('Completed'), body: summary('Completed').body.replace('6537358', '1111111') }], head), undefined);
 });
 test('related issues and same-repository issue URLs are recognized without closing them', () => {
-  assert.deepEqual(referencedIssueNumbers('Relates to #25. Keep #25 open. Also #1 and https://github.com/siralarius/familiyapp/issues/9; other/repo#123', 'siralarius', 'familiyapp'), [1, 9, 25]);
-  assert.deepEqual(referencedIssueNumbers('https://github.com/other/repo/issues/8', 'siralarius', 'familiyapp'), []);
+  assert.deepEqual(referencedIssueNumbers('<a href="/siralarius/familiyapp/issues/25">#25</a> <a href="/siralarius/familiyapp/issues/1">#1</a> <a href="https://github.com/siralarius/familiyapp/issues/9">link</a>', 'siralarius', 'familiyapp'), [1, 9, 25]);
+  assert.deepEqual(referencedIssueNumbers('<a href="https://github.com/other/repo/issues/8">foreign</a>', 'siralarius', 'familiyapp'), []);
 });
 test('all documented local GitHub reference forms inherit issue holds', () => {
-  assert.deepEqual(referencedIssueNumbers('GH-25 siralarius/familiyapp#26 SIRALARIUS/FAMILIYAPP#27 gh-28 https://redirect.github.com/siralarius/familiyapp/issues/29 other/repo#99', 'siralarius', 'familiyapp'), [25, 26, 27, 28, 29]);
+  assert.deepEqual(referencedIssueNumbers('<a href="/siralarius/familiyapp/issues/25">GH-25</a><a href="/siralarius/familiyapp/issues/26">siralarius/familiyapp#26</a><a href="https://redirect.github.com/siralarius/familiyapp/issues/29">link</a>', 'siralarius', 'familiyapp'), [25, 26, 29]);
+});
+test('code examples and plain non-reference tokens do not inherit issue holds', () => {
+  assert.deepEqual(referencedIssueNumbers('<p>Color #123456</p><code>GH-25</code><pre>&lt;a href="/siralarius/familiyapp/issues/99"&gt;example&lt;/a&gt;</pre>', 'siralarius', 'familiyapp'), []);
 });
 test('GitHub-rendered relative issue links inherit holds', () => {
   assert.deepEqual(referencedIssueNumbers('<a href="/siralarius/familiyapp/issues/25">parent</a><a href="../issues/26">parent</a>', 'siralarius', 'familiyapp'), [25, 26]);
@@ -106,10 +109,10 @@ for (const [name, options] of Object.entries({
   'manual PR': { pr: { labels: [{ name: 'manual-merge' }] } },
   'manual issue': { manualIssue: true },
   'label added during processing': { lateManualIssue: true },
-  'related issue is manual': { noIssues: true, pr: { body: 'Relates to #25' }, mentionedManual: true },
-  'related issue marked manual late': { noIssues: true, pr: { body: 'Relates to #25' }, lateMentionedManual: true },
-  'GH reference is manual': { noIssues: true, pr: { body: 'Relates to GH-25' }, mentionedManual: true },
-  'qualified local reference is manual': { noIssues: true, pr: { body: 'Relates to siralarius/familiyapp#25' }, mentionedManual: true },
+  'related issue is manual': { noIssues: true, bodyHTML: '<a href="/siralarius/familiyapp/issues/25">#25</a>', mentionedManual: true },
+  'related issue marked manual late': { noIssues: true, bodyHTML: '<a href="/siralarius/familiyapp/issues/25">#25</a>', lateMentionedManual: true },
+  'GH reference is manual': { noIssues: true, bodyHTML: '<a href="/siralarius/familiyapp/issues/25">GH-25</a>', mentionedManual: true },
+  'qualified local reference is manual': { noIssues: true, bodyHTML: '<a href="/siralarius/familiyapp/issues/25">siralarius/familiyapp#25</a>', mentionedManual: true },
   'rendered issue link is manual': { noIssues: true, bodyHTML: '<a href="https://github.com/siralarius/familiyapp/issues/25">parent</a>', mentionedManual: true },
   'incomplete issue pagination': { moreIssues: true },
   'unresolved findings': { unresolved: true },
@@ -137,9 +140,10 @@ test('missing review waits without posting ignored Actions-authored requests', a
   assert.equal(second.calls.filter(c => c.kind === 'merge').length, 0);
 });
 for (const [name, options] of Object.entries({
-  'Relates to keeps parent open': { noIssues: true, pr: { body: 'Relates to #25. Keep #25 open.' } },
-  'PR without issue references': { noIssues: true }
-  , 'mentioning a manual PR is not an issue link': { noIssues: true, pr: { body: 'Fixes the automation added by PR #32' }, mentionedPR: true, mentionedManual: true }
+  'Relates to keeps parent open': { noIssues: true, bodyHTML: '<p>Relates to <a href="/siralarius/familiyapp/issues/25">#25</a>. Keep it open.</p>' },
+  'PR without issue references': { noIssues: true },
+  'code example referencing a manual issue': { noIssues: true, bodyHTML: '<code>GH-25</code>', mentionedManual: true },
+  'mentioning a manual PR is not an issue link': { noIssues: true, bodyHTML: '<a href="/siralarius/familiyapp/issues/32">#32</a>', mentionedPR: true, mentionedManual: true }
 })) test(`can merge: ${name}`, async () => {
   const f = fixture(options); await run(f);
   assert.equal(f.calls.filter(c => c.kind === 'merge').length, 1);

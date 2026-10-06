@@ -41,20 +41,14 @@ function successfulChecks(checks, statuses) {
     statuses.every(status => status.state === 'success');
 }
 
-function referencedIssueNumbers(body, owner, repo) {
+function referencedIssueNumbers(html, owner, repo) {
   const numbers = new Set();
-  // Local mentions, including "Relates to", do not close a parent issue.
-  for (const match of (body || '').matchAll(/(?<![\w/])#([1-9]\d*)\b/g)) numbers.add(Number(match[1]));
-  for (const match of (body || '').matchAll(/(?<![\w/])GH-([1-9]\d*)\b/gi)) numbers.add(Number(match[1]));
-  for (const match of (body || '').matchAll(/(?<![\w/])([a-z0-9-]+)\/([a-z0-9_.-]+)#([1-9]\d*)\b/gi)) {
-    if (match[1].toLowerCase() === owner.toLowerCase() && match[2].toLowerCase() === repo.toLowerCase()) numbers.add(Number(match[3]));
-  }
-  for (const match of (body || '').matchAll(/https?:\/\/(?:redirect\.)?github\.com\/([^/\s]+)\/([^/\s]+)\/issues\/([1-9]\d*)\b/gi)) {
-    if (match[1].toLowerCase() === owner.toLowerCase() && match[2].toLowerCase() === repo.toLowerCase()) numbers.add(Number(match[3]));
-  }
-  for (const match of (body || '').matchAll(/href="([^"]+)"/gi)) {
+  // GitHub renders all genuine reference forms as links and leaves code examples as text.
+  // Read actual anchor tags, not href-like strings inside escaped code examples.
+  const links = (html || '').replace(/<(?:pre|code)\b[^>]*>[\s\S]*?<\/(?:pre|code)>/gi, '');
+  for (const match of links.matchAll(/<a\b[^>]*\bhref=(["'])(.*?)\1[^>]*>/gi)) {
     try {
-      const url = new URL(match[1].replace(/&amp;/g, '&'), `https://github.com/${owner}/${repo}/pull/1`);
+      const url = new URL(match[2].replace(/&amp;/g, '&'), `https://github.com/${owner}/${repo}/pull/1`);
       if (!['github.com', 'redirect.github.com'].includes(url.hostname.toLowerCase())) continue;
       const path = /^\/([^/]+)\/([^/]+)\/issues\/([1-9]\d*)\/?$/.exec(decodeURIComponent(url.pathname));
       if (path && path[1].toLowerCase() === owner.toLowerCase() && path[2].toLowerCase() === repo.toLowerCase()) numbers.add(Number(path[3]));
@@ -62,7 +56,7 @@ function referencedIssueNumbers(body, owner, repo) {
   }
   return [...numbers].sort((a, b) => a - b);
 }
-async function linkedState(github, owner, repo, number, body) {
+async function linkedState(github, owner, repo, number) {
   const data = await github.graphql(`query($owner:String!, $repo:String!, $number:Int!) {
     repository(owner:$owner, name:$repo) { pullRequest(number:$number) {
       bodyHTML
@@ -74,10 +68,10 @@ async function linkedState(github, owner, repo, number, body) {
   }`, { owner, repo, number });
   const pr = data.repository.pullRequest;
   const issues = pr.closingIssuesReferences;
+  if (typeof pr.bodyHTML !== 'string') return { issueNumbers: [], blocked: true };
   // Preserve structured closing links, and check labels on local body references too.
   const mentioned = [];
-  // Rendered links cover GitHub autolinks in addition to the supported raw forms.
-  for (const issue_number of referencedIssueNumbers(`${body || ''}\n${pr.bodyHTML || ''}`, owner, repo)) {
+  for (const issue_number of referencedIssueNumbers(pr.bodyHTML, owner, repo)) {
     const issue = (await github.rest.issues.get({ owner, repo, issue_number })).data;
     // GitHub shares issue numbering with PRs; mentioning a previous PR is not an issue link.
     if (issue.pull_request) continue;
