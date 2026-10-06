@@ -32,6 +32,12 @@ test('related issues and same-repository issue URLs are recognized without closi
   assert.deepEqual(referencedIssueNumbers('Relates to #25. Keep #25 open. Also #1 and https://github.com/siralarius/familiyapp/issues/9; other/repo#123', 'siralarius', 'familiyapp'), [1, 9, 25]);
   assert.deepEqual(referencedIssueNumbers('https://github.com/other/repo/issues/8', 'siralarius', 'familiyapp'), []);
 });
+test('all documented local GitHub reference forms inherit issue holds', () => {
+  assert.deepEqual(referencedIssueNumbers('GH-25 siralarius/familiyapp#26 SIRALARIUS/FAMILIYAPP#27 gh-28 https://redirect.github.com/siralarius/familiyapp/issues/29 other/repo#99', 'siralarius', 'familiyapp'), [25, 26, 27, 28, 29]);
+});
+test('GitHub-rendered relative issue links inherit holds', () => {
+  assert.deepEqual(referencedIssueNumbers('<a href="/siralarius/familiyapp/issues/25">parent</a><a href="../issues/26">parent</a>', 'siralarius', 'familiyapp'), [25, 26]);
+});
 test('CI is required for this PR and commit, latest reruns must succeed', () => {
   assert.ok(successfulRuns(runs, 42, head));
   assert.ok(!successfulRuns(runs.slice(1), 42, head));
@@ -59,6 +65,7 @@ function fixture(options = {}) {
       links++;
       const nodes = options.noIssues ? [] : [{ ...issue, labels: { ...issue.labels, nodes: options.manualIssue || (options.lateManualIssue && links > 1) ? [{ name: 'manual-merge' }] : [] } }];
       return { repository: { pullRequest: {
+        bodyHTML: options.bodyHTML || '',
         closingIssuesReferences: { pageInfo: { hasNextPage: !!options.moreIssues }, nodes },
         reviewThreads: { pageInfo: { hasNextPage: false }, nodes: options.unresolved ? [{ isResolved: false }] : [] }
       } } };
@@ -101,6 +108,9 @@ for (const [name, options] of Object.entries({
   'label added during processing': { lateManualIssue: true },
   'related issue is manual': { noIssues: true, pr: { body: 'Relates to #25' }, mentionedManual: true },
   'related issue marked manual late': { noIssues: true, pr: { body: 'Relates to #25' }, lateMentionedManual: true },
+  'GH reference is manual': { noIssues: true, pr: { body: 'Relates to GH-25' }, mentionedManual: true },
+  'qualified local reference is manual': { noIssues: true, pr: { body: 'Relates to siralarius/familiyapp#25' }, mentionedManual: true },
+  'rendered issue link is manual': { noIssues: true, bodyHTML: '<a href="https://github.com/siralarius/familiyapp/issues/25">parent</a>', mentionedManual: true },
   'incomplete issue pagination': { moreIssues: true },
   'unresolved findings': { unresolved: true },
   'CI missing': { runs: [] },
