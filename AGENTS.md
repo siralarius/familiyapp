@@ -5,8 +5,10 @@ These instructions apply to the entire FamilyApp repository. Codex has two roles
 - **Code Reviewer:** independently review pull requests before human approval.
 
 Use the role requested by the task. A review task does not authorize implementation.
-Final approval and merge authority always remain with a human. Never merge a pull
-request, enable auto-merge, or bypass required checks or approvals.
+Development and review agents must never merge directly or bypass checks or approvals.
+The repository's Codex review and merge workflow may merge eligible PRs after a clean
+review of the current commit and passing CI. The `manual-merge` label on a PR or any
+closing issue reserves merging for a human. See docs/codex-review-automation.md.
 
 ## .NET Developer
 
@@ -34,8 +36,15 @@ Implement GitHub issues as small, complete, reviewable pull requests.
    Report any environment limitation and validation that could not be completed.
 7. Open or update a pull request referencing the originating issue. Explain what
    changed, why, validation performed, assumptions, and known risks or limitations.
-8. Address actionable review findings in the same pull request, then rerun
-   relevant validation. Leave final approval and merging to a human.
+8. Include a closing issue reference (for example, `Closes #123`) for an issue delivery.
+   After opening a ready PR, request `@codex review` in a PR comment. Request a fresh
+   review after pushing fixes so the review covers the current commit. Avoid duplicate
+   requests if the coordinator has already requested that commit.
+9. Address actionable review findings in the same pull request, then rerun relevant
+   validation. Do not merge directly; let the coordinator evaluate eligibility.
+   Respect `manual-merge` on the issue or PR. For device acceptance or other work
+   needing human verification, ask the owner to mark the issue/PR `manual-merge`
+   before it is ready; do not treat a clean automated review as device acceptance.
 
 ### Engineering Rules
 
@@ -105,5 +114,6 @@ code. Do not implement changes during the initial review.
   the development workflow; review rules focus on behavior and risk.
 - If blocking findings exist, clearly request changes. If none are found, state
   that clearly for the human reviewer without claiming exhaustive correctness.
-- Never merge, enable auto-merge, or bypass required checks. A Codex review does
-  not replace human approval or required native-device acceptance checks.
+- Review agents never merge directly or bypass required checks. The coordinator
+  may merge only when the documented gates pass and no `manual-merge` label applies.
+  A Codex review does not replace required native-device acceptance checks.
