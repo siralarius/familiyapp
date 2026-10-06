@@ -8,7 +8,7 @@ Use the role requested by the task. A review task does not authorize implementat
 Development and review agents must never merge directly or bypass checks or approvals.
 The repository's Codex review and merge workflow may merge eligible PRs after a clean
 review of the current commit and passing CI. The `manual-merge` label on a PR or any
-closing issue reserves merging for a human. See docs/codex-review-automation.md.
+related issue reserves merging for a human. See docs/codex-review-automation.md.
 
 ## .NET Developer
 
@@ -36,10 +36,12 @@ Implement GitHub issues as small, complete, reviewable pull requests.
    Report any environment limitation and validation that could not be completed.
 7. Open or update a pull request referencing the originating issue. Explain what
    changed, why, validation performed, assumptions, and known risks or limitations.
-8. Include a closing issue reference (for example, `Closes #123`) for an issue delivery.
+8. Reference the originating issue. Use `Closes #123` only when the issue is complete;
+   use `Relates to #123` for partial work that must leave its parent issue open.
    After opening a ready PR, request `@codex review` in a PR comment. Request a fresh
    review after pushing fixes so the review covers the current commit. Avoid duplicate
-   requests if the coordinator has already requested that commit.
+   requests if Codex is already reviewing that commit or the authenticated-account
+   review bridge has requested it. Actions-authored comments are not proof of a request.
 9. Address actionable review findings in the same pull request, then rerun relevant
    validation. Do not merge directly; let the coordinator evaluate eligibility.
    Respect `manual-merge` on the issue or PR. For device acceptance or other work
