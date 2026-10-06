@@ -1,0 +1,42 @@
+name: Codex review and merge
+
+on:
+  issue_comment:
+    types: [created, edited]
+  issues:
+    types: [labeled, unlabeled]
+  workflow_run:
+    workflows: [CI, .NET CI, Automation tests]
+    types: [completed]
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+# Serialize review requests and merges; do not cancel a merge in progress.
+concurrency:
+  group: codex-review-and-merge
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+  checks: read
+  statuses: read
+
+jobs:
+  coordinate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Never execute PR code with this token. Only the trusted default branch is checked out.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { run } = require('./.github/scripts/codex-review-automation.cjs');
+            await run({ github, context, core });
