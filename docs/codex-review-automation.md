@@ -69,3 +69,11 @@ Use manual-merge for native-device acceptance or other work needing personal
 verification. Automated reviews and browser/CI checks do not prove two-iPhone behavior.
 Development and review agents do not merge directly; the repository coordinator
 is responsible for eligible automatic merges. Existing agent definitions are unchanged.
+
+## Verify the complete flow
+
+For a small documentation-only PR, first apply a temporary manual-merge label.
+Wait for the current commit's CI, preview, and explicit Codex result, and confirm
+that the coordinator leaves the labelled PR open. Remove that temporary label
+and confirm that the coordinator merges the same reviewed commit and dispatches
+post-merge validation. This verifies both the hold and the automatic merge path.
