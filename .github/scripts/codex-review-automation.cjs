@@ -64,6 +64,9 @@ async function linkedState(github, owner, repo, number, body) {
   // Preserve structured closing links, and check labels on local body references too.
   const mentioned = [];
   for (const issue_number of referencedIssueNumbers(body, owner, repo)) {
+    const issue = (await github.rest.issues.get({ owner, repo, issue_number })).data;
+    // GitHub shares issue numbering with PRs; mentioning a previous PR is not an issue link.
+    if (issue.pull_request) continue;
     const labels = await github.paginate(github.rest.issues.listLabelsOnIssue, { owner, repo, issue_number, per_page: 100 });
     mentioned.push({ number: issue_number, labels });
   }

@@ -70,6 +70,7 @@ function fixture(options = {}) {
         merge: async params => { calls.push({ kind: 'merge', params }); return { data: { merged: true } }; }
       },
       issues: {
+        get: async () => ({ data: options.mentionedPR ? { pull_request: {} } : {} }),
         listComments: list(options.comments || [clean]),
         createComment: async params => { calls.push({ kind: 'comment', params }); },
         listLabelsOnIssue: async () => ({ data: options.mentionedManual || (options.lateMentionedManual && links > 1) ? [{ name: 'manual-merge' }] : [] })
@@ -128,6 +129,7 @@ test('missing review waits without posting ignored Actions-authored requests', a
 for (const [name, options] of Object.entries({
   'Relates to keeps parent open': { noIssues: true, pr: { body: 'Relates to #25. Keep #25 open.' } },
   'PR without issue references': { noIssues: true }
+  , 'mentioning a manual PR is not an issue link': { noIssues: true, pr: { body: 'Fixes the automation added by PR #32' }, mentionedPR: true, mentionedManual: true }
 })) test(`can merge: ${name}`, async () => {
   const f = fixture(options); await run(f);
   assert.equal(f.calls.filter(c => c.kind === 'merge').length, 1);
