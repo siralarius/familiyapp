@@ -1,0 +1,42 @@
+@page "/devices"
+@using FamilyApp.Sync.Pairing
+@using Microsoft.AspNetCore.Components
+@inject IDevicePairingService Pairing
+
+<div class="page">
+    <h1>Family devices</h1>
+    <p>Keep both phones open on the same Wi-Fi while pairing and syncing.</p>
+    <p>Your family code: <strong>@Pairing.Identity.FamilyId</strong></p>
+    <p>On a new phone, enter this family code before adding household data.</p>
+    <input placeholder="Family code from the other phone" @bind="familyCode" />
+    <button class="secondary-button" @onclick="Join">Join family</button>
+    <h2>Pair phones</h2>
+    <p>Create an offer on the first phone. Copy it to the second phone and accept it.
+        Copy the response back to the first phone and complete pairing. Codes expire after five minutes.</p>
+    <button class="primary-button" @onclick="Offer">Create pairing offer</button>
+    <textarea aria-label="Pairing code from the other phone" @bind="incoming"></textarea>
+    <button class="secondary-button" @onclick="Accept">Accept offer</button>
+    <button class="secondary-button" @onclick="Complete">Complete pairing</button>
+    @if (!string.IsNullOrEmpty(outgoing))
+    {
+        <p>Copy this code to the other phone:</p>
+        <textarea aria-label="Generated pairing code" readonly value="@outgoing"></textarea>
+    }
+    <p role="status">@message</p>
+    <a href="/more">Back to sync status</a>
+</div>
+
+@code {
+    private string familyCode = "", incoming = "", outgoing = "", message = "";
+    private Task Join() => Run(async () => { await Pairing.JoinFamilyAsync(Guid.Parse(familyCode)); message = "Family selected."; });
+    private Task Offer() => Run(async () => { outgoing = await Pairing.CreateOfferAsync(); message = "Offer ready."; });
+    private Task Accept() => Run(async () => { outgoing = await Pairing.AcceptOfferAsync(incoming.Trim()); message = "Response ready. Complete pairing on the first phone."; });
+    private Task Complete() => Run(async () => { await Pairing.CompletePairingAsync(incoming.Trim()); outgoing = ""; message = "Paired. Sync starts automatically while both phones are open."; });
+    private async Task Run(Func<Task> action)
+    {
+        try { await action(); }
+        catch (FormatException) { message = "Enter a valid family code."; }
+        catch (InvalidOperationException exception) { message = exception.Message; }
+        catch { message = "Pairing could not finish. Check the code and try again."; }
+    }
+}

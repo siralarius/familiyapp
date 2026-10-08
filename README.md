@@ -126,6 +126,6 @@ Implementation work should be delivered in small reviewable pull requests so eac
 - Issue #2 adds an external-JWT-authenticated relay API, SQLite-backed opaque ciphertext mailboxes, idempotent retry, acknowledgements, expiry cleanup, device revocation and local-to-remote transport fallback.
 - The relay requires `RelayAuth:Authority` and `RelayAuth:Audience` from the deployment environment and a durable `ConnectionStrings:Relay` volume. The JWT issuer and hosting provider are intentionally not selected in code.
 - The relay API and transport integration tests pass locally, but unrelated-network device acceptance and a production relay deployment still require external issuer/hosting configuration.
-- The browser preview persists only the nonsecret last-sync timestamp in local storage; live iPhone sync status requires the future MAUI host to register its native pairing, discovery and transport services.
-- The MAUI host is still a placeholder excluded from the solution, so iOS adapter compilation and two-iPhone acceptance must be verified when that host is introduced.
+- The browser preview persists only the nonsecret last-sync timestamp in local storage. The iPhone host registers Keychain pairing, Bonjour discovery/listening, encrypted transport and persisted sync status.
+- The MAUI iPhone host has a separate macOS CI build and uses SQLite-backed entity changes. See [native setup and acceptance instructions](src/FamilyApp.Maui/README.md) for the Xcode-compatible workload, simulator builds, personal-device signing and pairing. Physical two-iPhone acceptance remains required.
 - Browser and automated checks do not replace the two-iPhone acceptance checks required for native pairing, discovery and local transport.
