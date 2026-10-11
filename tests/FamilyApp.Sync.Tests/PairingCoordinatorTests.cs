@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.Json;
 using FamilyApp.Sync.Pairing;
 using Xunit;
 
@@ -55,6 +56,75 @@ public class PairingCoordinatorTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => pairingA.CompletePairingAsync(deviceA, tamperedResponse, cancellationToken));
         Assert.Null(await pairingA.ReadTrustedSecretAsync(deviceA, deviceB.DeviceId, cancellationToken));
+    }
+
+    [Fact]
+    public async Task Inspect_qr_payload_identifies_offer_and_response()
+    {
+        var familyId = Guid.NewGuid();
+        var deviceA = new FamilyDeviceIdentity(familyId, Guid.NewGuid(), "Phone A");
+        var deviceB = new FamilyDeviceIdentity(familyId, Guid.NewGuid(), "Phone B");
+        var pairingA = new PairingCoordinator(new FakeSecurePairingStore(), new EcdhPairingKeyAgreement());
+        var pairingB = new PairingCoordinator(new FakeSecurePairingStore(), new EcdhPairingKeyAgreement());
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        var offer = await pairingA.CreateOfferAsync(deviceA, cancellationToken);
+        var offerSummary = PairingCoordinator.InspectQrPayload(offer);
+        Assert.Equal(PairingQrPayloadKind.Offer, offerSummary.Kind);
+        Assert.Equal(familyId, offerSummary.FamilyId);
+
+        var response = await pairingB.AcceptOfferAsync(deviceB, offer, cancellationToken);
+        var responseSummary = PairingCoordinator.InspectQrPayload(response);
+        Assert.Equal(PairingQrPayloadKind.Response, responseSummary.Kind);
+        Assert.Equal(familyId, responseSummary.FamilyId);
+    }
+
+    [Fact]
+    public void Inspect_qr_payload_rejects_unsupported_payload()
+    {
+        var unsupportedPayload = ToPairingQr(new { FamilyId = Guid.NewGuid(), ExpiresAtUtc = DateTimeOffset.UtcNow });
+        var invalidPayload = "familyapp://pair/v1/%%%";
+
+        var unsupported = Assert.Throws<InvalidOperationException>(() => PairingCoordinator.InspectQrPayload(unsupportedPayload));
+        Assert.Equal("The pairing QR code format is unsupported.", unsupported.Message);
+        var invalid = Assert.Throws<InvalidOperationException>(() => PairingCoordinator.InspectQrPayload(invalidPayload));
+        Assert.Equal("The pairing QR code is invalid.", invalid.Message);
+    }
+
+    [Fact]
+    public async Task Expired_offer_is_rejected_during_acceptance()
+    {
+        var fakeTime = new MutableTimeProvider(DateTimeOffset.UtcNow);
+        var familyId = Guid.NewGuid();
+        var deviceA = new FamilyDeviceIdentity(familyId, Guid.NewGuid(), "Phone A");
+        var deviceB = new FamilyDeviceIdentity(familyId, Guid.NewGuid(), "Phone B");
+        var pairingA = new PairingCoordinator(new FakeSecurePairingStore(), new EcdhPairingKeyAgreement(), fakeTime);
+        var pairingB = new PairingCoordinator(new FakeSecurePairingStore(), new EcdhPairingKeyAgreement(), fakeTime);
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        var offer = await pairingA.CreateOfferAsync(deviceA, cancellationToken);
+        fakeTime.Advance(TimeSpan.FromMinutes(6));
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => pairingB.AcceptOfferAsync(deviceB, offer, cancellationToken));
+        Assert.Equal("The pairing code has expired.", exception.Message);
+    }
+
+    private static string ToPairingQr(object payload)
+    {
+        var encoded = Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(payload))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+        return $"familyapp://pair/v1/{encoded}";
+    }
+
+    private sealed class MutableTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        private DateTimeOffset _now = now;
+
+        public override DateTimeOffset GetUtcNow() => _now;
+
+        public void Advance(TimeSpan duration) => _now = _now.Add(duration);
     }
 
     private sealed class FakeSecurePairingStore : ISecurePairingStore

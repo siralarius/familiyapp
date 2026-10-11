@@ -3,6 +3,7 @@ using FamilyApp.Core.Inventory;
 using FamilyApp.Core.Meals;
 using FamilyApp.Core.Shopping;
 using FamilyApp.Data;
+using FamilyApp.Maui.Platforms.iOS;
 using FamilyApp.Sync.ChangeLog;
 using FamilyApp.Sync.Pairing;
 using FamilyApp.Sync.Transport;
@@ -40,6 +41,8 @@ public static class MauiProgram
         builder.Services.AddSingleton<ISecurePairingStore, NativeSecurePairingStore>();
         builder.Services.AddSingleton<IPairingKeyAgreement, EcdhPairingKeyAgreement>();
         builder.Services.AddSingleton<PairingCoordinator>();
+        builder.Services.AddSingleton<IQrCodeRenderer, NativeQrCodeRenderer>();
+        builder.Services.AddSingleton<IQrScanner, NativeQrScanner>();
         builder.Services.AddSingleton<NativeDeviceSync>();
         builder.Services.AddSingleton<IDevicePairingService>(sp => sp.GetRequiredService<NativeDeviceSync>());
         return builder.Build();

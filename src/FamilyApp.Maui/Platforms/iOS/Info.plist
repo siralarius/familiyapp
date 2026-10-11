@@ -12,6 +12,8 @@
 	<array><string>UIInterfaceOrientationPortrait</string></array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Family App uses your local network to find trusted family devices for syncing.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Family App uses the camera to scan family pairing QR codes.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_familyapp-sync._tcp</string>
