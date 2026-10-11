@@ -144,7 +144,7 @@ public sealed class NativeQrScanner : IQrScanner
             if (_preview is not null) _preview.Frame = View!.Bounds;
         }
 
-        [Export("metadataOutput:didOutputMetadataObjects:fromConnection:")]
+        [Export("captureOutput:didOutputMetadataObjects:fromConnection:")]
         public void DidOutputMetadataObjects(AVCaptureMetadataOutput output, AVMetadataObject[] metadataObjects,
             AVCaptureConnection connection)
         {

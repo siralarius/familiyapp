@@ -17,7 +17,7 @@
     @if (!string.IsNullOrEmpty(offerQrImage))
     {
         <p>Scan this code on the new phone:</p>
-        <img alt="Pairing offer QR code" src="@offerQrImage" style="max-width:260px;width:100%;height:auto;" />
+        <img alt="Pairing offer QR code" src="@offerQrImage" style="display:block;max-width:360px;width:calc(100% - 48px);height:auto;padding:24px;background:white;image-rendering:pixelated;" />
     }
 
     <h2>Join from this phone</h2>
@@ -31,7 +31,7 @@
     @if (!string.IsNullOrEmpty(responseQrImage))
     {
         <p>Show this response QR code to the first phone:</p>
-        <img alt="Pairing response QR code" src="@responseQrImage" style="max-width:260px;width:100%;height:auto;" />
+        <img alt="Pairing response QR code" src="@responseQrImage" style="display:block;max-width:360px;width:calc(100% - 48px);height:auto;padding:24px;background:white;image-rendering:pixelated;" />
     }
 
     <h2>Complete on first phone</h2>
