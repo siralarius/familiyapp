@@ -4,7 +4,7 @@ The iPhone host renders `FamilyApp.Shared` with MAUI Blazor Hybrid. Household ch
 
 ## Build on a Mac
 
-Use Xcode 26.5 and .NET SDK 10.0.401. Run these commands from this directory so its `global.json` selects the Xcode-compatible workload:
+Use Xcode 26.5 and .NET SDK 10.0.300 (or a patch in the same 10.0.3xx feature band). The iOS workflow installs the SDK selected by this directory’s `global.json`. Keep the SDK in the 10.0.300 feature band: workload set 10.0.300.3 contains the iOS 26.5 workload, and changing SDK feature bands changes the workload-set package used during installation. Run these commands from this directory:
 
 ```sh
 sudo dotnet workload install maui-ios --version 10.0.300.3
