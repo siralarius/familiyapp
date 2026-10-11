@@ -23,6 +23,16 @@ public sealed record FamilyDeviceIdentity
 }
 
 public sealed record PairingKeyPair(byte[] PublicKey, byte[] PrivateKey);
+public enum PairingQrPayloadKind
+{
+    Offer = 1,
+    Response = 2
+}
+
+public sealed record PairingQrPayloadSummary(
+    PairingQrPayloadKind Kind,
+    Guid FamilyId,
+    DateTimeOffset ExpiresAtUtc);
 
 public interface ISecurePairingStore
 {
@@ -84,6 +94,15 @@ public sealed class PairingCoordinator
         _secureStore = secureStore;
         _keyAgreement = keyAgreement;
         _timeProvider = timeProvider ?? TimeProvider.System;
+    }
+
+    public static PairingQrPayloadSummary InspectQrPayload(string qr)
+    {
+        using var payload = DecodePayloadDocument(qr);
+        var root = payload.RootElement;
+        var familyId = ReadGuid(root, "FamilyId");
+        var expiresAtUtc = ReadDateTimeOffset(root, "ExpiresAtUtc");
+        return new PairingQrPayloadSummary(DetectKind(root), familyId, expiresAtUtc);
     }
 
     public async Task<string> CreateOfferAsync(
@@ -263,6 +282,34 @@ public sealed class PairingCoordinator
 
     private static TPayload Decode<TPayload>(string qr)
     {
+        var payload = DecodePayloadBytes(qr);
+
+        try
+        {
+            return JsonSerializer.Deserialize<TPayload>(payload)
+                ?? throw new InvalidOperationException("The pairing QR code is invalid.");
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidOperationException("The pairing QR code is invalid.", exception);
+        }
+    }
+
+    private static JsonDocument DecodePayloadDocument(string qr)
+    {
+        var payload = DecodePayloadBytes(qr);
+        try
+        {
+            return JsonDocument.Parse(payload);
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidOperationException("The pairing QR code is invalid.", exception);
+        }
+    }
+
+    private static byte[] DecodePayloadBytes(string qr)
+    {
         if (string.IsNullOrWhiteSpace(qr) || !qr.StartsWith(QrPrefix, StringComparison.Ordinal))
             throw new InvalidOperationException("The pairing QR code is invalid.");
 
@@ -270,17 +317,51 @@ public sealed class PairingCoordinator
         {
             var encoded = qr[QrPrefix.Length..].Replace('-', '+').Replace('_', '/');
             encoded = encoded.PadRight(encoded.Length + (4 - encoded.Length % 4) % 4, '=');
-            return JsonSerializer.Deserialize<TPayload>(Convert.FromBase64String(encoded))
-                ?? throw new InvalidOperationException("The pairing QR code is invalid.");
+            return Convert.FromBase64String(encoded);
         }
         catch (FormatException exception)
         {
             throw new InvalidOperationException("The pairing QR code is invalid.", exception);
         }
-        catch (JsonException exception)
-        {
-            throw new InvalidOperationException("The pairing QR code is invalid.", exception);
-        }
+    }
+
+    private static PairingQrPayloadKind DetectKind(JsonElement root)
+    {
+        if (HasProperties(root, "Version", "FamilyId", "InitiatorDeviceId", "DeviceId", "DisplayName", "OfferPublicKey",
+            "PublicKey", "OfferNonce", "Nonce", "ExpiresAtUtc", "Proof"))
+            return PairingQrPayloadKind.Response;
+
+        if (HasProperties(root, "Version", "FamilyId", "DeviceId", "DisplayName", "PublicKey", "Nonce", "ExpiresAtUtc"))
+            return PairingQrPayloadKind.Offer;
+
+        throw new InvalidOperationException("The pairing QR code format is unsupported.");
+    }
+
+    private static bool HasProperties(JsonElement root, params string[] names)
+    {
+        foreach (var name in names)
+            if (!root.TryGetProperty(name, out _))
+                return false;
+
+        return true;
+    }
+
+    private static Guid ReadGuid(JsonElement root, string name)
+    {
+        if (!root.TryGetProperty(name, out var property) || property.ValueKind != JsonValueKind.String ||
+            !Guid.TryParse(property.GetString(), out var value))
+            throw new InvalidOperationException("The pairing QR code format is unsupported.");
+
+        return value;
+    }
+
+    private static DateTimeOffset ReadDateTimeOffset(JsonElement root, string name)
+    {
+        if (!root.TryGetProperty(name, out var property) || property.ValueKind != JsonValueKind.String ||
+            !DateTimeOffset.TryParse(property.GetString(), out var value))
+            throw new InvalidOperationException("The pairing QR code format is unsupported.");
+
+        return value;
     }
 
     private static byte[] DecodeBytes(string value, int minimumLength)

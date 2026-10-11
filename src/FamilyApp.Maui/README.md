@@ -30,14 +30,16 @@ Open Family App on the phone after installation. Certificate/profile setup is pe
 
 ## Pair and verify two phones
 
-1. On the first phone open More → Family devices and copy its family code.
-2. On the fresh second phone join that family before adding household data. Joining a different family is refused once local data exists, preventing accidental cross-family data sharing.
-3. Create an offer on the first phone, copy it to the second and accept it. Copy the response to the first and complete pairing. Both codes expire after five minutes. The current host supports copying pairing codes; camera/QR rendering remains an onboarding improvement.
-4. Allow Local Network access. Keep both apps in the foreground on the same Wi-Fi. Discovery uses Bonjour, and trusted peers are synchronized every ten seconds with bounded connection timeouts.
-5. Add/edit/delete shopping, inventory, meals and calendar entries on either phone. Navigate away and back to refresh the view on the other phone.
-6. Verify independent offline edits, reconnect, conflicting edits, duplicate exchange and force-quit/relaunch persistence. Turn Wi-Fi off/on and background/foreground both apps.
+1. On the first phone open More → Family devices and create an offer QR code.
+2. On the fresh second phone tap Scan offer QR code, allow Camera permission when prompted, then confirm joining the scanned family and create the response QR code.
+3. On the first phone tap Scan response QR code to complete pairing. Offer and response codes expire after five minutes.
+4. Validate camera error handling on a physical iPhone: deny permission, cancel scan, scan invalid/non-pairing QR content, scan an expired code, and rescan the same code. Each case must show a clear message and must not establish trust.
+5. Validate the manual fallback still works by using Family code plus offer/response text entry when camera scanning is unavailable.
+6. Allow Local Network access. Keep both apps in the foreground on the same Wi-Fi. Discovery uses Bonjour, and trusted peers are synchronized every ten seconds with bounded connection timeouts.
+7. Add/edit/delete shopping, inventory, meals and calendar entries on either phone. Navigate away and back to refresh the view on the other phone.
+8. Verify independent offline edits, reconnect, conflicting edits, duplicate exchange and force-quit/relaunch persistence. Turn Wi-Fi off/on and background/foreground both apps.
 
-Simulator launch and automated tests do not establish physical two-iPhone acceptance. Record device models, OS versions and observed convergence before closing #1/#12/#13/#14. iOS suspends ordinary apps in the background; this host resumes sync when active rather than promising background connectivity.
+Simulator launch and automated tests do not establish physical-camera acceptance or physical two-iPhone pairing acceptance. Record device models, OS versions and observed convergence before closing #1/#12/#13/#14. iOS suspends ordinary apps in the background; this host resumes sync when active rather than promising background connectivity.
 
 ## Outstanding external configuration
 
