@@ -9,6 +9,8 @@ Development and review agents must never merge directly or bypass checks or appr
 The repository's Codex review and merge workflow may merge eligible PRs after a clean
 review of the current commit and passing CI. The `manual-merge` label on a PR or any
 related issue reserves merging for a human. See docs/codex-review-automation.md.
+The `agent-remediate` label also reserves merging for a human. See
+docs/pr-remediation.md for the opt-in, bounded PR branch repair workflow.
 
 ## .NET Developer
 
