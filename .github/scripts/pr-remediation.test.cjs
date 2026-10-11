@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { eligible, reason, receipts, validateChanges, prepare, publish, verification } = require('./pr-remediation.cjs');
+const { eligible, reason, receipts, validateChanges, prepare, publish, verification, redact } = require('./pr-remediation.cjs');
 const { isManual, PREVIEW_CONTEXT } = require('./codex-review-automation.cjs');
 const sha = '50bb98fceb3195747217921df25f1a322b945623';
 const pr = { number: 38, state: 'open', draft: false, base: { ref: 'main' }, head: { sha, ref: 'fix/dynamic-home-day-greeting', repo: { full_name: 'siralarius/familiyapp' } }, user: { login: 'siralarius' }, labels: [{ name: 'agent-remediate' }] };
@@ -22,10 +22,44 @@ test('only owner-authored opted-in open same-repo PRs may be edited', () => {
   assert.equal(isManual(pr.labels), true, 'remediation label holds existing merge coordinator');
 });
 test('human-forged and malformed receipts cannot consume budget or claim verification', () => {
-  const body = '<!-- familyapp-remediation:{"kind":"verified","sha":"fake"} -->';
+  const body = `<!-- familyapp-remediation:{"kind":"verified","sha":"${sha}"} -->`;
   assert.deepEqual(receipts([{ body, user: { login: 'siralarius', type: 'User' } }]), []);
   assert.equal(receipts([{ body, user: { login: 'github-actions[bot]', type: 'Bot' } }]).length, 1);
   assert.deepEqual(receipts([{ body: '<!-- familyapp-remediation:oops -->', user: { login: 'github-actions[bot]', type: 'Bot' } }]), []);
+  for (const marker of ['null', '[]', 'true', '42', '"attempt"', '{}', '{"kind":"attempt","sha":"fake"}', `{"kind":"attempt","sha":"${sha}","threads":null}`]) {
+    assert.deepEqual(receipts([{ body: `<!-- familyapp-remediation:${marker} -->`, user: { login: 'github-actions[bot]', type: 'Bot' } }]), []);
+  }
+});
+test('fine-grained GitHub PATs are rejected in candidate files and redacted in evidence', () => {
+  const token = 'github_pat_' + 'A'.repeat(30) + '_' + 'B'.repeat(30);
+  assert.throws(() => validateChanges([{ path: 'src/file.cs', mode: '100644', content: `token=${token}` }]), /credential/);
+  assert.equal(redact(`failure ${token}`), 'failure [REDACTED]');
+});
+test('active P2 findings survive unrelated pushes; outdated and resolved threads do not', () => {
+  const quiet = { ...state, runs: [], statuses: [], reviews: [] };
+  const active = { ...state.threads[0], comments: { nodes: [{ commit: { oid: 'a'.repeat(40) }, body: 'P2: Refresh boundaries' }] } };
+  assert.equal(reason({ ...quiet, threads: [active] }).findings.length, 1);
+  assert.equal(reason({ ...quiet, threads: [{ ...active, isOutdated: true }] }).actionable, false);
+  assert.equal(reason({ ...quiet, threads: [{ ...active, isResolved: true }] }).actionable, false);
+});
+test('latest decisive reviewer state supersedes old change requests across heads', () => {
+  const quiet = { ...state, runs: [], statuses: [], threads: [] };
+  const request = { id: 1, user: { id: 10 }, state: 'CHANGES_REQUESTED', commit_id: 'a'.repeat(40) };
+  assert.equal(reason({ ...quiet, reviews: [request] }).actionable, true);
+  for (const outcome of ['APPROVED', 'DISMISSED']) {
+    const cleared = { ...request, id: 2, state: outcome, commit_id: sha };
+    assert.equal(reason({ ...quiet, reviews: [cleared, request] }).actionable, false);
+  }
+  assert.equal(reason({ ...quiet, reviews: [request, { ...request, id: 2, state: 'COMMENTED' }] }).actionable, true);
+});
+test('Copilot changes-recommended inline findings route without a P badge; latest clean verdict supersedes them', () => {
+  const quiet = { ...state, runs: [], statuses: [] };
+  const review = { id: 50, user: { id: 175728472 }, state: 'COMMENTED', body: '<!-- ccr-overview-v2 -->\n### 🟡 Changes recommended' };
+  const thread = { ...state.threads[0], comments: { nodes: [{ body: 'Detect fine-grained GitHub PATs', pullRequestReview: { databaseId: 50, state: 'COMMENTED' } }] } };
+  assert.equal(reason({ ...quiet, reviews: [review], threads: [thread] }).actionable, true);
+  const approval = { ...review, id: 51, body: '<!-- ccr-overview-v2 -->\n### 🟢 Approved' };
+  assert.equal(reason({ ...quiet, reviews: [review, approval], threads: [thread] }).actionable, false);
+  assert.equal(reason({ ...quiet, reviews: [{ ...review, user: { id: 1 } }], threads: [thread] }).actionable, false);
 });
 test('publisher rejects policy edits, traversal, symlinks, duplicates, oversized patches and secrets', () => {
   const file = { path: 'src/file.cs', mode: '100644', content: 'valid' };
