@@ -56,6 +56,28 @@ public sealed class NativeDeviceSync : IDevicePairingService
         finally { _lifecycle.Release(); }
     }
 
+    public async Task JoinFromOfferAsync(string offer)
+    {
+        var summary = PairingCoordinator.InspectQrPayload(offer);
+        if (summary.Kind != PairingQrPayloadKind.Offer || summary.DeviceId == Identity.DeviceId)
+            throw new InvalidOperationException("Scan an offer QR code from the other device.");
+        if (summary.ExpiresAtUtc <= DateTimeOffset.UtcNow)
+            throw new InvalidOperationException("The pairing code has expired. Create a new offer.");
+        await JoinFamilyAsync(summary.FamilyId);
+        var response = await _pairing.AcceptOfferAsync(Identity, offer);
+        var peer = new PeerServiceEndpoint(PeerServiceEndpoint.CreateServiceName(summary.DeviceId),
+            PeerDiscoveryDefaults.BonjourServiceType, "local.");
+        var coordinator = new PeerSyncCoordinator(Identity, new BonjourPeerDiscovery(),
+            new BonjourPeerTransport(), _pairing, _engine, statusService: _status);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        try { await coordinator.PairAndSynchronizePeerAsync(peer, response, timeout.Token); }
+        catch (Exception exception) when (exception is IOException or OperationCanceledException)
+        {
+            throw new InvalidOperationException(
+                "Could not reach the offering device. Keep both apps open on the same Wi-Fi and scan a fresh offer.", exception);
+        }
+    }
+
     public Task<string> CreateOfferAsync() => _pairing.CreateOfferAsync(Identity);
     public Task<string> AcceptOfferAsync(string offer) => _pairing.AcceptOfferAsync(Identity, offer);
     public Task CompletePairingAsync(string response) => _pairing.CompletePairingAsync(Identity, response);

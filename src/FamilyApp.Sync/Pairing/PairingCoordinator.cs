@@ -32,7 +32,10 @@ public enum PairingQrPayloadKind
 public sealed record PairingQrPayloadSummary(
     PairingQrPayloadKind Kind,
     Guid FamilyId,
-    DateTimeOffset ExpiresAtUtc);
+    DateTimeOffset ExpiresAtUtc)
+{
+    public Guid DeviceId { get; init; }
+}
 
 public interface ISecurePairingStore
 {
@@ -102,7 +105,8 @@ public sealed class PairingCoordinator
         var root = payload.RootElement;
         var familyId = ReadGuid(root, "FamilyId");
         var expiresAtUtc = ReadDateTimeOffset(root, "ExpiresAtUtc");
-        return new PairingQrPayloadSummary(DetectKind(root), familyId, expiresAtUtc);
+        return new PairingQrPayloadSummary(DetectKind(root), familyId, expiresAtUtc)
+        { DeviceId = ReadGuid(root, "DeviceId") };
     }
 
     public async Task<string> CreateOfferAsync(

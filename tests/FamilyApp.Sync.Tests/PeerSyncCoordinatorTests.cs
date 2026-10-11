@@ -14,6 +14,132 @@ namespace FamilyApp.Sync.Tests;
 public class PeerSyncCoordinatorTests
 {
     [Fact]
+    public async Task Pairing_response_over_transport_establishes_mutual_trust_and_syncs_both_devices()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var family = Guid.NewGuid();
+        var host = Identity(family);
+        var guest = Identity(family);
+        var hostPairing = Pairing(new FakeSecurePairingStore());
+        var guestPairing = Pairing(new FakeSecurePairingStore());
+        var response = await guestPairing.AcceptOfferAsync(guest,
+            await hostPairing.CreateOfferAsync(host, token), token);
+        var hostLog = new ChangeLogEngine();
+        var guestLog = new ChangeLogEngine();
+        hostLog.Apply(Change(host.DeviceId, "Host"));
+        guestLog.Apply(Change(guest.DeviceId, "Guest"));
+        var (hostConnection, guestConnection) = InMemoryPeerConnection.CreatePair();
+        var hostSync = Coordinator(host, hostPairing, hostLog, new FakePeerTransport(null));
+        var guestSync = Coordinator(guest, guestPairing, guestLog, new FakePeerTransport(guestConnection));
+        PeerSyncStatus? hostStatus = null, guestStatus = null;
+        hostSync.StatusChanged += status => hostStatus = status;
+        guestSync.StatusChanged += status => guestStatus = status;
+
+        await Task.WhenAll(hostSync.HandleIncomingPeerAsync(hostConnection, token),
+            guestSync.PairAndSynchronizePeerAsync(Endpoint(host.DeviceId), response, token));
+
+        Assert.Equal(hostLog.Changes, guestLog.Changes);
+        Assert.Equal(2, hostLog.Changes.Count);
+        Assert.Equal(await hostPairing.ReadTrustedSecretAsync(host, guest.DeviceId, token),
+            await guestPairing.ReadTrustedSecretAsync(guest, host.DeviceId, token));
+        Assert.True(hostStatus?.PairingCompleted);
+        Assert.True(guestStatus?.PairingCompleted);
+        Assert.Equal(PeerSyncState.Synchronized, hostStatus?.State);
+        Assert.Equal(PeerSyncState.Synchronized, guestStatus?.State);
+    }
+
+    [Theory]
+    [InlineData("Proof")]
+    [InlineData("FamilyId")]
+    public async Task Invalid_pairing_response_cannot_establish_trust_or_receive_household_data(string field)
+    {
+        var token = TestContext.Current.CancellationToken;
+        var family = Guid.NewGuid();
+        var host = Identity(family);
+        var guest = Identity(family);
+        var hostPairing = Pairing(new FakeSecurePairingStore());
+        var guestPairing = Pairing(new FakeSecurePairingStore());
+        var response = await guestPairing.AcceptOfferAsync(guest,
+            await hostPairing.CreateOfferAsync(host, token), token);
+        const string prefix = "familyapp://pair/v1/";
+        var encoded = response[prefix.Length..].Replace('-', '+').Replace('_', '/');
+        encoded = encoded.PadRight((encoded.Length + 3) / 4 * 4, '=');
+        var payload = JsonNode.Parse(Convert.FromBase64String(encoded))!.AsObject();
+        payload[field] = field == "FamilyId" ? Guid.NewGuid().ToString() : Convert.ToBase64String(new byte[32]);
+        var tampered = prefix + Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(payload))
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var hostLog = new ChangeLogEngine();
+        hostLog.Apply(Change(host.DeviceId, "Private household item"));
+        var (hostConnection, guestConnection) = InMemoryPeerConnection.CreatePair();
+        var hostSync = Coordinator(host, hostPairing, hostLog, new FakePeerTransport(null));
+        PeerSyncStatus? status = null;
+        hostSync.StatusChanged += value => status = value;
+        await guestConnection.SendAsync(System.Text.Encoding.UTF8.GetBytes(tampered), token);
+
+        await hostSync.HandleIncomingPeerAsync(hostConnection, token);
+
+        Assert.Null(await hostPairing.ReadTrustedSecretAsync(host, guest.DeviceId, token));
+        Assert.False(status?.PairingCompleted);
+        Assert.NotEqual(PeerSyncState.Synchronized, status?.State);
+        // Closure, rather than a household snapshot, is all the untrusted sender receives.
+        await Assert.ThrowsAsync<ChannelClosedException>(async () => await guestConnection.ReceiveAsync(token));
+    }
+
+    [Fact]
+    public async Task Joiner_does_not_report_success_if_host_confirmation_is_tampered()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var family = Guid.NewGuid();
+        var host = Identity(family);
+        var guest = Identity(family);
+        var hostPairing = Pairing(new FakeSecurePairingStore());
+        var guestPairing = Pairing(new FakeSecurePairingStore());
+        var response = await guestPairing.AcceptOfferAsync(guest,
+            await hostPairing.CreateOfferAsync(host, token), token);
+        var hostLog = new ChangeLogEngine();
+        hostLog.Apply(Change(host.DeviceId, "Host"));
+        var guestLog = new ChangeLogEngine();
+        var (hostConnection, guestConnection) = InMemoryPeerConnection.CreatePair();
+        var hostSync = Coordinator(host, hostPairing, hostLog, new FakePeerTransport(null));
+        var guestSync = Coordinator(guest, guestPairing, guestLog,
+            new FakePeerTransport(new TamperingPeerConnection(guestConnection)));
+        PeerSyncStatus? status = null;
+        guestSync.StatusChanged += value => status = value;
+        var hostTask = hostSync.HandleIncomingPeerAsync(hostConnection, token);
+
+        await Assert.ThrowsAsync<AuthenticationTagMismatchException>(() =>
+            guestSync.PairAndSynchronizePeerAsync(Endpoint(host.DeviceId), response, token));
+        await hostTask;
+
+        Assert.Null(status);
+        Assert.Empty(guestLog.Changes);
+    }
+
+    [Fact]
+    public async Task Unreachable_offering_device_does_not_report_a_completed_join()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var family = Guid.NewGuid();
+        var host = Identity(family);
+        var guest = Identity(family);
+        var hostPairing = Pairing(new FakeSecurePairingStore());
+        var guestPairing = Pairing(new FakeSecurePairingStore());
+        var response = await guestPairing.AcceptOfferAsync(guest,
+            await hostPairing.CreateOfferAsync(host, token), token);
+        var guestLog = new ChangeLogEngine();
+        var guestSync = Coordinator(guest, guestPairing, guestLog, new FakePeerTransport(null));
+        PeerSyncStatus? status = null;
+        guestSync.StatusChanged += value => status = value;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            guestSync.PairAndSynchronizePeerAsync(Endpoint(host.DeviceId), response, token));
+
+        Assert.Null(status);
+        Assert.Empty(guestLog.Changes);
+        Assert.Null(await hostPairing.ReadTrustedSecretAsync(host, guest.DeviceId, token));
+    }
+
+    [Fact]
     public async Task Paired_devices_exchange_encrypted_changes_and_converge()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

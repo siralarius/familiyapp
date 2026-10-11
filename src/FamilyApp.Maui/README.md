@@ -31,10 +31,10 @@ Open Family App on the phone after installation. Certificate/profile setup is pe
 ## Pair and verify two phones
 
 1. On the first phone open More → Family devices and create an offer QR code.
-2. On the fresh second phone tap Scan offer QR code, allow Camera permission when prompted, then confirm joining the scanned family and create the response QR code.
-3. On the first phone tap Scan response QR code to complete pairing. Offer and response codes expire after five minutes.
-4. Validate camera error handling on a physical iPhone: deny permission, cancel scan, scan invalid/non-pairing QR content, scan an expired code, and rescan the same code. Each case must show a clear message and must not establish trust.
-5. Validate the manual fallback still works by using Family code plus offer/response text entry when camera scanning is unavailable.
+2. On the fresh second phone tap Scan QR and join, allow Camera permission when prompted, and scan the offer. Scanning authorizes joining that family; no confirmation or response QR scan is required.
+3. The second phone returns its authenticated pairing response over Bonjour/TCP and both devices exchange an encrypted snapshot. Both screens return automatically to More → Device sync after success. If the offering phone cannot be reached, pairing does not report success; keep both apps open on the same Wi-Fi and scan a fresh offer. Codes expire after five minutes.
+4. Validate camera error handling on a physical iPhone: deny permission, cancel scan, scan invalid/non-pairing QR content, scan an expired code, and scan a family offer on a phone that already contains household data. Each failed case must show a clear message without replacing that family or establishing unintended trust.
+5. Validate the manual fallback still works by expanding Manual pairing fallback and using Family code plus offer/response text entry when camera scanning is unavailable.
 6. Allow Local Network access. Keep both apps in the foreground on the same Wi-Fi. Discovery uses Bonjour, and trusted peers are synchronized every ten seconds with bounded connection timeouts.
 7. Add/edit/delete shopping, inventory, meals and calendar entries on either phone. Navigate away and back to refresh the view on the other phone.
 8. Verify independent offline edits, reconnect, conflicting edits, duplicate exchange and force-quit/relaunch persistence. Turn Wi-Fi off/on and background/foreground both apps.
