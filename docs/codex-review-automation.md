@@ -25,6 +25,10 @@ Labels are checked again immediately before merging. For an urgent stop, make th
 PR a draft or disable the merge workflow; GitHub has no atomic label-and-merge API.
 Removing the label makes the PR eligible again.
 
+The `agent-remediate` label is also a manual merge hold. The separate
+[PR remediation workflow](pr-remediation.md) may fix opted-in PR branches but never
+merges. Leave that label until a human decides to merge the verified change.
+
 ## Merge requirements
 
 - Ready, same-repository PR authored by siralarius and targeting main.

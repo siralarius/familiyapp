@@ -8,7 +8,7 @@ function isCodex(item) {
   return item.user?.id === CODEX_ID && item.user?.login === CODEX_LOGIN && item.user?.type === 'Bot';
 }
 function isManual(labels) {
-  return labels.some(label => label.name.toLowerCase() === MANUAL_LABEL);
+  return labels.some(label => [MANUAL_LABEL, 'agent-remediate'].includes(label.name.toLowerCase()));
 }
 function cleanReview(comments, head) {
   // Accept only the observed connector result, with an explicit reviewed commit.
