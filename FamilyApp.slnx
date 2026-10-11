@@ -11,6 +11,7 @@
     <Project Path="tests/FamilyApp.Data.Tests/FamilyApp.Data.Tests.csproj" />
     <Project Path="tests/FamilyApp.Core.Tests/FamilyApp.Core.Tests.csproj" />
     <Project Path="tests/FamilyApp.Relay.Tests/FamilyApp.Relay.Tests.csproj" />
+    <Project Path="tests/FamilyApp.Shared.Tests/FamilyApp.Shared.Tests.csproj" />
     <Project Path="tests/FamilyApp.Sync.Tests/FamilyApp.Sync.Tests.csproj" />
   </Folder>
 </Solution>
