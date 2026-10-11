@@ -81,6 +81,7 @@ Add internet/mobile-data synchronization without replacing local SQLite as the s
 - Set the Netlify build environment variable `GOOGLE_CLIENT_ID` to a Google OAuth 2.0 Web client ID.
 - Add the deployed Netlify site origin and any deploy-preview origins to the OAuth client's authorized JavaScript origins in Google Cloud.
 - The Netlify build injects the client ID into the published app. Without it, Google Calendar remains disabled with a setup message; no client ID is embedded in source control.
+- See [Google Calendar configuration](docs/google-calendar.md) for the full step-by-step setup.
 
 ## Proposed solution structure
 
