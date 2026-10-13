@@ -145,3 +145,11 @@ test('unavailable review authors do not crash or clear another unknown change re
   assert.equal(reason({ ...quiet, reviews: [{ id: 1, user: null, state: 'APPROVED' }] }).actionable, false);
   assert.equal(reason({ ...quiet, reviews: [{ id: 1, user: null, state: 'CHANGES_REQUESTED' }, { id: 2, user: null, state: 'APPROVED' }] }).actionable, true);
 });
+
+test('GitHub in-place dismissal suppresses comments and Copilot recommendations', () => {
+  const review = { id: 1, user: null, state: 'DISMISSED', body: '<!-- ccr-overview-v2 -->\n### 🟡 Changes recommended' };
+  const thread = { ...state.threads[0], comments: { nodes: [{ body: 'P2: Fix this', pullRequestReview: { databaseId: 1, state: 'DISMISSED' } }] } };
+  const quiet = { ...state, runs: [], statuses: [], threads: [thread] };
+  assert.equal(reason({ ...quiet, reviews: [review] }).actionable, false);
+  assert.equal(reason({ ...quiet, reviews: [{ ...review, user: { id: 175728472 } }] }).actionable, false);
+});

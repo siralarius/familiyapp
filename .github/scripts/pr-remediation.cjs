@@ -32,11 +32,12 @@ function decisiveReviews(reviews) {
 function reason(snapshot) {
   const failed = snapshot.runs.filter(x => WORKFLOWS.has(x.name) && x.status === 'completed' && FAILURE.has(x.conclusion));
   const preview = snapshot.statuses.find(x => x.context === PREVIEW_CONTEXT && ['failure', 'error'].includes(x.state));
-  const copilot = snapshot.reviews.filter(x => x.user?.id === 175728472 && x.body?.startsWith('<!-- ccr-overview-v2 -->')).sort((a, b) => b.id - a.id)[0];
+  const copilot = snapshot.reviews.filter(x => x.user?.id === 175728472 && x.state !== 'DISMISSED' && x.body?.startsWith('<!-- ccr-overview-v2 -->')).sort((a, b) => b.id - a.id)[0];
   const recommendedReview = copilot && /### 🟡 Changes recommended/.test(copilot.body) ? copilot.id : undefined;
   const latestReviews = decisiveReviews(snapshot.reviews);
   const superseded = comment => {
     const original = snapshot.reviews.find(r => r.id === comment.pullRequestReview?.databaseId);
+    if (original?.state === 'DISMISSED') return true;
     if (!original?.user?.id || original.state !== 'CHANGES_REQUESTED') return false;
     return latestReviews.some(r => r.user?.id === original.user.id && r.id > original.id &&
       ['APPROVED', 'DISMISSED'].includes(r.state));
