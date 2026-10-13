@@ -11,6 +11,10 @@
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
     <ApplicationVersion>1</ApplicationVersion>
   </PropertyGroup>
+  <PropertyGroup Condition="$(RuntimeIdentifier.StartsWith('iossimulator-'))">
+    <CodesignEntitlements>Platforms/iOS/SimulatorEntitlements.plist</CodesignEntitlements>
+    <CodesignKey>-</CodesignKey>
+  </PropertyGroup>
   <ItemGroup>
     <MauiIcon Include="Resources/AppIcon/appicon.svg" />
     <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.101" />
