@@ -32,7 +32,10 @@ public enum PairingQrPayloadKind
 public sealed record PairingQrPayloadSummary(
     PairingQrPayloadKind Kind,
     Guid FamilyId,
-    DateTimeOffset ExpiresAtUtc);
+    DateTimeOffset ExpiresAtUtc)
+{
+    public Guid DeviceId { get; init; }
+}
 
 public interface ISecurePairingStore
 {
@@ -102,7 +105,8 @@ public sealed class PairingCoordinator
         var root = payload.RootElement;
         var familyId = ReadGuid(root, "FamilyId");
         var expiresAtUtc = ReadDateTimeOffset(root, "ExpiresAtUtc");
-        return new PairingQrPayloadSummary(DetectKind(root), familyId, expiresAtUtc);
+        return new PairingQrPayloadSummary(DetectKind(root), familyId, expiresAtUtc)
+        { DeviceId = ReadGuid(root, "DeviceId") };
     }
 
     public async Task<string> CreateOfferAsync(
@@ -129,6 +133,41 @@ public sealed class PairingCoordinator
         {
             CryptographicOperations.ZeroMemory(keyPair.PrivateKey);
         }
+    }
+
+    public void ValidateOfferForJoining(FamilyDeviceIdentity identity, string offerQr)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        var offer = Decode<OfferPayload>(offerQr);
+        ValidateOffer(identity, offer);
+        // Validate the actual encoded EC key before any family identity is persisted.
+        var probe = _keyAgreement.CreateKeyPair();
+        byte[]? secret = null;
+        try { secret = _keyAgreement.DeriveKey(probe.PrivateKey, DecodeBytes(offer.PublicKey, 1), []); }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(probe.PrivateKey);
+            if (secret is not null) CryptographicOperations.ZeroMemory(secret);
+        }
+    }
+
+    public async Task<string> AcceptOfferForJoiningAsync(
+        FamilyDeviceIdentity identity, string offerQr, Func<Guid, Task> selectFamily,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(selectFamily);
+        var summary = InspectQrPayload(offerQr);
+        if (summary.Kind != PairingQrPayloadKind.Offer)
+            throw new InvalidOperationException("Scan an offer QR code from the other device.");
+        var candidate = new FamilyDeviceIdentity(summary.FamilyId, identity.DeviceId, identity.DisplayName);
+        ValidateOfferForJoining(candidate, offerQr);
+        // Acceptance can fail after preflight (expiry, key agreement or secure storage).
+        // Finish it before allowing the caller to persist a new family identity.
+        var response = await AcceptOfferAsync(candidate, offerQr, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        await selectFamily(candidate.FamilyId);
+        return response;
     }
 
     public async Task<string> AcceptOfferAsync(
@@ -233,7 +272,7 @@ public sealed class PairingCoordinator
     private void ValidateOffer(FamilyDeviceIdentity identity, OfferPayload offer)
     {
         ValidateVersionAndExpiry(offer.Version, offer.ExpiresAtUtc);
-        if (offer.FamilyId != identity.FamilyId || offer.DeviceId == identity.DeviceId || string.IsNullOrWhiteSpace(offer.DisplayName))
+        if (offer.FamilyId == Guid.Empty || offer.FamilyId != identity.FamilyId || offer.DeviceId == Guid.Empty || offer.DeviceId == identity.DeviceId || string.IsNullOrWhiteSpace(offer.DisplayName))
             throw new InvalidOperationException("The pairing offer is not valid for this device.");
         _ = DecodeBytes(offer.PublicKey, 1);
         _ = DecodeBytes(offer.Nonce, 32);

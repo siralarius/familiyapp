@@ -30,4 +30,7 @@ public sealed record PeerSyncStatus(
     Guid PeerDeviceId,
     PeerSyncState State,
     string? Detail,
-    DateTimeOffset TimestampUtc);
+    DateTimeOffset TimestampUtc)
+{
+    public bool PairingCompleted { get; init; }
+}
