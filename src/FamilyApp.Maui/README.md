@@ -41,6 +41,19 @@ Open Family App on the phone after installation. Certificate/profile setup is pe
 
 Simulator launch and automated tests do not establish physical-camera acceptance or physical two-iPhone pairing acceptance. Record device models, OS versions and observed convergence before closing #1/#12/#13/#14. iOS suspends ordinary apps in the background; this host resumes sync when active rather than promising background connectivity.
 
+## Siri shopping shortcut acceptance
+
+Family App includes an in-app Siri setup guide at More -> Set up Siri. The current native integration uses a Siri-triggered shortcut URL endpoint (`familyapp://shopping/add?item=...`) that writes through the same local SQLite shopping service and sync pipeline as manual edits.
+
+Physical-device acceptance for #48 must validate:
+
+1. Trigger Siri with the configured phrase and add an item (for example, milk), then verify it appears in Shopping.
+2. Force-close and reopen Family App; the item must remain.
+3. If a second trusted phone is paired and reachable, verify the new item syncs normally.
+4. Test from a locked device and while the app is closed. If iOS requests unlock or briefly foregrounds the app, record that as the observed platform behavior rather than promising lock-screen background execution.
+
+Browser checks and automated tests do not replace this physical Siri verification.
+
 ## Outstanding external configuration
 
 The native host currently uses local Wi-Fi transport. #2 still requires selection/configuration of a JWT issuer, durable public relay hosting, native token acquisition and two-phone tests on unrelated networks. Google Calendar OAuth in #25 is a browser deployment feature; native Google sign-in is not configured by the web client's Netlify setting.

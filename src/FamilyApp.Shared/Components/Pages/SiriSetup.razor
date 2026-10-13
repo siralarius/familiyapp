@@ -1,0 +1,55 @@
+@page "/siri-setup"
+
+<PageTitle>Set up Siri · Family</PageTitle>
+<div class="page siri-page">
+    <header class="page-heading">
+        <p class="eyebrow">Voice setup</p>
+        <h1>Set up Siri</h1>
+        <p class="lede">Add groceries to your shared shopping list with your voice on iPhone.</p>
+    </header>
+
+    <section class="card siri-card">
+        <p class="card-label">Before you start</p>
+        <h2>Two-minute setup</h2>
+        <ol class="siri-steps">
+            <li>Open Apple’s Shortcuts app and tap the <strong>+</strong> button.</li>
+            <li>Add an <strong>Ask for Input</strong> action with prompt text like “What should I add?”.</li>
+            <li>Add an <strong>Open URLs</strong> action with this URL: <code>@SiriSetupContent.ShortcutUrlTemplate</code>.</li>
+            <li>Name the shortcut <strong>@SiriSetupContent.ShortcutName</strong>, open details, then tap <strong>Add to Siri</strong>.</li>
+            <li>Record a phrase such as “@SiriSetupContent.SiriPhraseExample”.</li>
+        </ol>
+        <p class="siri-note">This shortcut uses Family App’s built-in shopping endpoint and saves directly into your local-first list.</p>
+    </section>
+
+    <section class="card siri-card">
+        <p class="card-label">Example phrases</p>
+        <h2>Try these</h2>
+        <ul class="siri-examples">
+            <li>“Hey Siri, add to Family shopping list.”</li>
+            <li>“Hey Siri, add groceries in Family App.”</li>
+            <li>When Siri asks for input, say “Milk”.</li>
+        </ul>
+    </section>
+
+    <section class="card siri-card">
+        <p class="card-label">Quick test</p>
+        <h2>Check that it works</h2>
+        <ol class="siri-steps">
+            <li>Lock your iPhone and trigger your Siri phrase.</li>
+            <li>Speak a product name such as “Milk”.</li>
+            <li>Unlock if requested, then open Family App → Shopping and confirm the item appears.</li>
+            <li>Force-close and reopen Family App to verify the item is still there.</li>
+        </ol>
+    </section>
+
+    <section class="card siri-card">
+        <p class="card-label">Troubleshooting</p>
+        <h2>If Siri does not add items</h2>
+        <ul class="siri-examples">
+            <li>In iPhone Settings, allow Siri and Shortcuts for Family App.</li>
+            <li>If Siri says it cannot run while locked, unlock and run the phrase again.</li>
+            <li>If the app was fully closed, iOS may briefly open it while processing the shortcut.</li>
+            <li>Shopping items are saved locally first and sync to paired family devices when available.</li>
+        </ul>
+    </section>
+</div>
