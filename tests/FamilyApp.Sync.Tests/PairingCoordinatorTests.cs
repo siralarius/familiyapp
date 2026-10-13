@@ -109,6 +109,37 @@ public class PairingCoordinatorTests
         Assert.Equal("The pairing code has expired.", exception.Message);
     }
 
+    [Theory]
+    [InlineData("Version")]
+    [InlineData("PublicKey")]
+    [InlineData("Nonce")]
+    [InlineData("DisplayName")]
+    [InlineData("ExpiresAtUtc")]
+    public void Offer_is_fully_validated_without_writing_trust_before_joining(string invalidField)
+    {
+        var familyId = Guid.NewGuid();
+        var identity = new FamilyDeviceIdentity(familyId, Guid.NewGuid(), "Joining phone");
+        using var key = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        var payload = new Dictionary<string, object>
+        {
+            ["Version"] = 1, ["FamilyId"] = familyId, ["DeviceId"] = Guid.NewGuid(),
+            ["DisplayName"] = "Offering phone", ["PublicKey"] = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()),
+            ["Nonce"] = Convert.ToBase64String(new byte[32]), ["ExpiresAtUtc"] = DateTimeOffset.UtcNow.AddMinutes(5)
+        };
+        var store = new FakeSecurePairingStore();
+        var pairing = new PairingCoordinator(store, new EcdhPairingKeyAgreement());
+        pairing.ValidateOfferForJoining(identity, ToPairingQr(payload));
+        Assert.Empty(store.Values);
+        payload[invalidField] = invalidField switch
+        {
+            "Version" => 999, "PublicKey" => "AQ==", "Nonce" => "AQ==",
+            "DisplayName" => "", _ => DateTimeOffset.UtcNow.AddMinutes(-1)
+        };
+        Assert.ThrowsAny<Exception>(() => pairing.ValidateOfferForJoining(identity, ToPairingQr(payload)));
+        Assert.Empty(store.Values);
+        Assert.Equal(familyId, identity.FamilyId);
+    }
+
     private static string ToPairingQr(object payload)
     {
         var encoded = Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(payload))

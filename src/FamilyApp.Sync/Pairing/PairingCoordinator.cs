@@ -135,6 +135,22 @@ public sealed class PairingCoordinator
         }
     }
 
+    public void ValidateOfferForJoining(FamilyDeviceIdentity identity, string offerQr)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        var offer = Decode<OfferPayload>(offerQr);
+        ValidateOffer(identity, offer);
+        // Validate the actual encoded EC key before any family identity is persisted.
+        var probe = _keyAgreement.CreateKeyPair();
+        byte[]? secret = null;
+        try { secret = _keyAgreement.DeriveKey(probe.PrivateKey, DecodeBytes(offer.PublicKey, 1), []); }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(probe.PrivateKey);
+            if (secret is not null) CryptographicOperations.ZeroMemory(secret);
+        }
+    }
+
     public async Task<string> AcceptOfferAsync(
         FamilyDeviceIdentity identity,
         string offerQr,

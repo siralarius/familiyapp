@@ -103,8 +103,9 @@ public class PeerSyncCoordinatorTests
         var hostSync = Coordinator(host, hostPairing, hostLog, new FakePeerTransport(null));
         var guestSync = Coordinator(guest, guestPairing, guestLog,
             new FakePeerTransport(new TamperingPeerConnection(guestConnection)));
-        PeerSyncStatus? status = null;
+        PeerSyncStatus? status = null, hostStatus = null;
         guestSync.StatusChanged += value => status = value;
+        hostSync.StatusChanged += value => hostStatus = value;
         var hostTask = hostSync.HandleIncomingPeerAsync(hostConnection, token);
 
         await Assert.ThrowsAsync<AuthenticationTagMismatchException>(() =>
@@ -112,6 +113,8 @@ public class PeerSyncCoordinatorTests
         await hostTask;
 
         Assert.Null(status);
+        Assert.False(hostStatus?.PairingCompleted);
+        Assert.NotEqual(PeerSyncState.Synchronized, hostStatus?.State);
         Assert.Empty(guestLog.Changes);
     }
 

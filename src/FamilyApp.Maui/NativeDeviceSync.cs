@@ -64,6 +64,8 @@ public sealed class NativeDeviceSync : IDevicePairingService
             throw new InvalidOperationException("Scan an offer QR code from the other device.");
         if (summary.ExpiresAtUtc <= DateTimeOffset.UtcNow)
             throw new InvalidOperationException("The pairing code has expired. Create a new offer.");
+        _pairing.ValidateOfferForJoining(
+            new FamilyDeviceIdentity(summary.FamilyId, Identity.DeviceId, Identity.DisplayName), offer);
         progress?.Invoke("Selecting the family and restarting local sync");
         await JoinFamilyAsync(summary.FamilyId);
         progress?.Invoke("Creating and saving the pairing proof");

@@ -95,6 +95,13 @@ public sealed class PeerSyncCoordinator
                     var response = EncryptedPeerSyncSession.Encrypt(
                         _changeLog.Changes.ToArray(), _identity.FamilyId, _identity.DeviceId, peerDeviceId, trustedSecret);
                     await connection.SendAsync(response, cancellationToken);
+                    if (pairingCompleted)
+                    {
+                        var receipt = await connection.ReceiveAsync(cancellationToken);
+                        var expected = EncryptedPeerSyncSession.CreatePairingReceipt(trustedSecret, response);
+                        if (!CryptographicOperations.FixedTimeEquals(receipt.Span, expected))
+                            throw new CryptographicException("Pairing confirmation was not authenticated.");
+                    }
                     await ReportAsync(peerDeviceId, PeerSyncState.Synchronized, cancellationToken: cancellationToken,
                         pairingCompleted: pairingCompleted);
                 }
@@ -137,7 +144,7 @@ public sealed class PeerSyncCoordinator
             await using var connection = await _transport.ConnectAsync(peer, cancellationToken);
             await connection.SendAsync(message, cancellationToken);
             await new EncryptedPeerSyncSession().ExchangeAsync(connection, _changeLog,
-                _identity.FamilyId, _identity.DeviceId, peerDeviceId.Value, secret, cancellationToken);
+                _identity.FamilyId, _identity.DeviceId, peerDeviceId.Value, secret, cancellationToken, confirmPairing: true);
             await ReportAsync(peerDeviceId.Value, PeerSyncState.Synchronized,
                 cancellationToken: cancellationToken, pairingCompleted: true);
         }
@@ -235,7 +242,8 @@ public sealed class EncryptedPeerSyncSession
         Guid localDeviceId,
         Guid peerDeviceId,
         ReadOnlyMemory<byte> trustedSecret,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool confirmPairing = false)
     {
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(changeLog);
@@ -248,7 +256,18 @@ public sealed class EncryptedPeerSyncSession
         var remoteChanges = Decrypt(inbound.Span, familyId, peerDeviceId, localDeviceId, trustedSecret.Span);
         var applied = changeLog.Merge(remoteChanges);
         await connection.AcknowledgeAsync(cancellationToken);
+        if (confirmPairing)
+            await connection.SendAsync(CreatePairingReceipt(trustedSecret.Span, inbound.Span), cancellationToken);
         return applied;
+    }
+
+    internal static byte[] CreatePairingReceipt(ReadOnlySpan<byte> secret, ReadOnlySpan<byte> response)
+    {
+        var context = "familyapp-pairing-receipt-v1"u8;
+        var data = new byte[context.Length + 32];
+        context.CopyTo(data);
+        SHA256.HashData(response).CopyTo(data, context.Length);
+        return HMACSHA256.HashData(secret, data);
     }
 
     internal static byte[] Encrypt(
