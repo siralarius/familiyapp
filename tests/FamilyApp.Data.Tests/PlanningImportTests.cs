@@ -1,0 +1,66 @@
+using FamilyApp.Core.Meals;
+using FamilyApp.Core.Planning;
+using FamilyApp.Core.Shopping;
+using FamilyApp.Data;
+using FamilyApp.Sync.ChangeLog;
+using Xunit;
+
+namespace FamilyApp.Data.Tests;
+public sealed class PlanningImportTests : IDisposable
+{
+    private readonly string path = Path.Combine(Path.GetTempPath(), "family-planning-" + Guid.NewGuid() + ".db");
+    private ChangeLogEngine Open() => new(new SqliteChangeLogStore(path));
+    private static PreparedPlanningImport Plan(Guid? id = null) => new(id ?? Guid.NewGuid(),
+        [MealPlanEntry.Create(new(2026, 10, 13), MealType.Dinner, "Tortilla española")],
+        [ShoppingItem.Create("Huevos", "6"), ShoppingItem.Create(" huevos ", "12")]);
+    [Fact]
+    public async Task ImportPersistsTogetherAndSyncReplayDoesNotDuplicatePurchasesOrMeals()
+    {
+        var engine = Open(); var plan = Plan();
+        var result = await new LocalPlanningImportStore(engine, "a").SaveAsync(plan);
+        Assert.Equal(new(1, 1, 1), result);
+        var restarted = Open();
+        Assert.True((await new LocalPlanningImportStore(restarted, "a").SaveAsync(plan)).AlreadyImported);
+        Assert.Equal(3, restarted.Changes.Count);
+        var peer = new ChangeLogEngine(); peer.Merge(restarted.Changes);
+        var repositories = new LocalFamilyRepositories(peer, "b");
+        Assert.Equal("Tortilla española", Assert.Single(await ((IMealPlanRepository)repositories).GetAllAsync()).Description);
+        Assert.Equal("6", Assert.Single(await ((IShoppingRepository)repositories).GetAllAsync()).Quantity);
+        Assert.True((await new LocalPlanningImportStore(peer, "b").SaveAsync(plan)).AlreadyImported);
+        Assert.Equal(3, peer.Changes.Count);
+    }
+    [Fact]
+    public async Task ExistingMealPreventsWholeImportWithoutOverwritingOrPartialShoppingSave()
+    {
+        var engine = Open(); var repositories = new LocalFamilyRepositories(engine, "a");
+        var mealRepository = (IMealPlanRepository)repositories;
+        await mealRepository.GetAllAsync();
+        var existing = MealPlanEntry.Create(new(2026, 10, 13), MealType.Dinner, "Keep our dinner");
+        await mealRepository.SaveAsync([existing]);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new LocalPlanningImportStore(engine, "a").SaveAsync(Plan()));
+        Assert.Equal(existing, Assert.Single(await mealRepository.GetAllAsync()));
+        Assert.Empty(await ((IShoppingRepository)repositories).GetAllAsync()); Assert.Single(engine.Changes);
+    }
+    [Fact]
+    public async Task ExistingPurchaseQuantityIsPreservedAndFailedStoragePublishesNothing()
+    {
+        var engine = Open(); IShoppingRepository repository = new LocalFamilyRepositories(engine, "a");
+        await repository.GetAllAsync(); var eggs = ShoppingItem.Create("Huevos", "2"); await repository.SaveAsync([eggs]);
+        var result = await new LocalPlanningImportStore(engine, "a").SaveAsync(Plan());
+        Assert.Equal(0, result.PurchasesAdded); Assert.Equal(2, result.PurchasesSkipped);
+        Assert.Equal(eggs, Assert.Single(await repository.GetAllAsync()));
+        var failed = new ChangeLogEngine(new FailingStore());
+        await Assert.ThrowsAsync<IOException>(() => new LocalPlanningImportStore(failed, "b").SaveAsync(Plan()));
+        Assert.Empty(failed.Changes); Assert.Empty(failed.Current());
+    }
+    private sealed class FailingStore : IChangeLogStore
+    {
+        public IReadOnlyCollection<ChangeRecord> Load() => [];
+        public void Append(IReadOnlyCollection<ChangeRecord> changes) => throw new IOException("Disk unavailable");
+    }
+    public void Dispose()
+    {
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        foreach (var suffix in new[] { "", "-wal", "-shm" }) if (File.Exists(path + suffix)) File.Delete(path + suffix);
+    }
+}
