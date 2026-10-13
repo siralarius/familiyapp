@@ -13,6 +13,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="$(RuntimeIdentifier.StartsWith('iossimulator-'))">
     <CodesignEntitlements>Platforms/iOS/SimulatorEntitlements.plist</CodesignEntitlements>
+    <CodesignKey>-</CodesignKey>
   </PropertyGroup>
   <ItemGroup>
     <MauiIcon Include="Resources/AppIcon/appicon.svg" />
