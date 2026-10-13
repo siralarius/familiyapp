@@ -21,12 +21,9 @@ internal static class SiriShoppingShortcutHandler
             return false;
         }
 
-        _ = Task.Run(async () =>
-        {
-            var result = await AddItemAsync(itemName);
-            Preferences.Default.Set(SiriResultKey, result.Message);
-            Preferences.Default.Set(SiriResultAtKey, DateTimeOffset.UtcNow.ToString("O"));
-        });
+        var result = AddItemAsync(itemName).GetAwaiter().GetResult();
+        Preferences.Default.Set(SiriResultKey, result.Message);
+        Preferences.Default.Set(SiriResultAtKey, DateTimeOffset.UtcNow.ToString("O"));
         return true;
     }
 
