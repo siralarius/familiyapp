@@ -110,6 +110,8 @@ public class PairingCoordinatorTests
     }
 
     [Theory]
+    [InlineData("DeviceId")]
+    [InlineData("FamilyId")]
     [InlineData("Version")]
     [InlineData("PublicKey")]
     [InlineData("Nonce")]
@@ -132,7 +134,7 @@ public class PairingCoordinatorTests
         Assert.Empty(store.Values);
         payload[invalidField] = invalidField switch
         {
-            "Version" => 999, "PublicKey" => "AQ==", "Nonce" => "AQ==",
+            "DeviceId" => Guid.Empty, "FamilyId" => Guid.Empty, "Version" => 999, "PublicKey" => "AQ==", "Nonce" => "AQ==",
             "DisplayName" => "", _ => DateTimeOffset.UtcNow.AddMinutes(-1)
         };
         Assert.ThrowsAny<Exception>(() => pairing.ValidateOfferForJoining(identity, ToPairingQr(payload)));

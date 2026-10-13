@@ -253,7 +253,7 @@ public sealed class PairingCoordinator
     private void ValidateOffer(FamilyDeviceIdentity identity, OfferPayload offer)
     {
         ValidateVersionAndExpiry(offer.Version, offer.ExpiresAtUtc);
-        if (offer.FamilyId != identity.FamilyId || offer.DeviceId == identity.DeviceId || string.IsNullOrWhiteSpace(offer.DisplayName))
+        if (offer.FamilyId == Guid.Empty || offer.FamilyId != identity.FamilyId || offer.DeviceId == Guid.Empty || offer.DeviceId == identity.DeviceId || string.IsNullOrWhiteSpace(offer.DisplayName))
             throw new InvalidOperationException("The pairing offer is not valid for this device.");
         _ = DecodeBytes(offer.PublicKey, 1);
         _ = DecodeBytes(offer.Nonce, 32);

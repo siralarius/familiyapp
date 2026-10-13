@@ -77,7 +77,7 @@ public sealed class NativeDeviceSync : IDevicePairingService
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         progress?.Invoke("Connecting to the offering device and exchanging encrypted data (30-second timeout)");
         try { await coordinator.PairAndSynchronizePeerAsync(peer, response, timeout.Token); }
-        catch (Exception exception) when (exception is IOException or OperationCanceledException)
+        catch (Exception exception) when (exception is IOException or OperationCanceledException or TimeoutException)
         {
             throw new InvalidOperationException(
                 "Could not reach the offering device. Keep both apps open on the same Wi-Fi and scan a fresh offer.", exception);
