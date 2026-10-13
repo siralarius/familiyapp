@@ -47,6 +47,7 @@ public sealed class PlanningDraftTests
         Assert.Throws<ArgumentException>(() => PlanningDraft.Parse(Json().Replace("\"version\":1", "\"version\":99")));
         Assert.Throws<ArgumentException>(() => PlanningDraft.Parse(Json().Replace("\"version\":1", "\"unknown\":1")));
         Assert.Throws<ArgumentException>(() => PlanningDraft.Parse(Json().Replace("f0ee49a6-1a36-4e88-af9b-8e05d8dbcc71", Guid.Empty.ToString())));
+        Assert.Throws<ArgumentException>(() => PlanningDraft.Parse(Json().Replace(",\"source\":\"explicit\"", "")));
         Assert.Equal(1, PlanningDraft.Parse("```json\n" + Json() + "\n```").Version);
     }
     private sealed class NeverSave : IPlanningImportStore
