@@ -35,6 +35,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<ShoppingListService>();
         builder.Services.AddSingleton<InventoryService>();
         builder.Services.AddSingleton<MealPlanService>();
+        builder.Services.AddSingleton<MealPlanningImportService>();
         builder.Services.AddSingleton<FamilyCalendarService>();
         builder.Services.AddSingleton<IPeerSyncStatusStore, NativeSyncStatusStore>();
         builder.Services.AddSingleton<PeerSyncStatusService>();
