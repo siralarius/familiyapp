@@ -64,12 +64,14 @@ public sealed class NativeDeviceSync : IDevicePairingService
             throw new InvalidOperationException("Scan an offer QR code from the other device.");
         if (summary.ExpiresAtUtc <= DateTimeOffset.UtcNow)
             throw new InvalidOperationException("The pairing code has expired. Create a new offer.");
-        _pairing.ValidateOfferForJoining(
-            new FamilyDeviceIdentity(summary.FamilyId, Identity.DeviceId, Identity.DisplayName), offer);
-        progress?.Invoke("Selecting the family and restarting local sync");
-        await JoinFamilyAsync(summary.FamilyId);
+        if (summary.FamilyId != Identity.FamilyId && _engine.Changes.Count != 0)
+            throw new InvalidOperationException("Join your family before adding household data on this phone.");
         progress?.Invoke("Creating and saving the pairing proof");
-        var response = await _pairing.AcceptOfferAsync(Identity, offer);
+        var response = await _pairing.AcceptOfferForJoiningAsync(Identity, offer, async familyId =>
+        {
+            progress?.Invoke("Selecting the family and restarting local sync");
+            await JoinFamilyAsync(familyId);
+        });
         var peer = new PeerServiceEndpoint(PeerServiceEndpoint.CreateServiceName(summary.DeviceId),
             PeerDiscoveryDefaults.BonjourServiceType, "local.");
         var coordinator = new PeerSyncCoordinator(Identity, new BonjourPeerDiscovery(),

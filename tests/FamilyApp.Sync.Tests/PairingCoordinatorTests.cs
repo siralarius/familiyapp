@@ -142,6 +142,50 @@ public class PairingCoordinatorTests
         Assert.Equal(familyId, identity.FamilyId);
     }
 
+    [Fact]
+    public async Task Expiry_after_preflight_does_not_select_or_persist_a_family()
+    {
+        var time = new MutableTimeProvider(DateTimeOffset.UtcNow);
+        var host = new FamilyDeviceIdentity(Guid.NewGuid(), Guid.NewGuid(), "Host");
+        var local = new FamilyDeviceIdentity(Guid.NewGuid(), Guid.NewGuid(), "Joiner");
+        var offer = await new PairingCoordinator(new FakeSecurePairingStore(), new EcdhPairingKeyAgreement(), time)
+            .CreateOfferAsync(host, TestContext.Current.CancellationToken);
+        time.Advance(TimeSpan.FromMinutes(4));
+        var store = new FakeSecurePairingStore();
+        var pairing = new PairingCoordinator(store, new ExpiringKeyAgreement(time), time);
+        var selected = false;
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            pairing.AcceptOfferForJoiningAsync(local, offer, _ => { selected = true; return Task.CompletedTask; }, TestContext.Current.CancellationToken));
+        Assert.Contains("expired", exception.Message);
+        Assert.False(selected); Assert.Empty(store.Values);
+    }
+
+    [Fact]
+    public async Task Family_selection_follows_successful_proof_and_secure_storage()
+    {
+        var host = new FamilyDeviceIdentity(Guid.NewGuid(), Guid.NewGuid(), "Host");
+        var local = new FamilyDeviceIdentity(Guid.NewGuid(), Guid.NewGuid(), "Joiner");
+        var offer = await new PairingCoordinator(new FakeSecurePairingStore(), new EcdhPairingKeyAgreement()).CreateOfferAsync(host, TestContext.Current.CancellationToken);
+        var store = new FakeSecurePairingStore();
+        var pairing = new PairingCoordinator(store, new EcdhPairingKeyAgreement());
+        var selected = Guid.Empty;
+        var response = await pairing.AcceptOfferForJoiningAsync(local, offer, familyId =>
+        {
+            Assert.Single(store.Values); selected = familyId; return Task.CompletedTask;
+        }, TestContext.Current.CancellationToken);
+        Assert.Equal(host.FamilyId, selected);
+        Assert.Equal(host.FamilyId, PairingCoordinator.InspectQrPayload(response).FamilyId);
+    }
+
+    private sealed class ExpiringKeyAgreement(MutableTimeProvider time) : IPairingKeyAgreement
+    {
+        private readonly EcdhPairingKeyAgreement inner = new();
+        public byte[] ExportPublicKey(ReadOnlySpan<byte> privateKey) => inner.ExportPublicKey(privateKey);
+        public PairingKeyPair CreateKeyPair() { time.Advance(TimeSpan.FromMinutes(2)); return inner.CreateKeyPair(); }
+        public byte[] DeriveKey(ReadOnlySpan<byte> privateKey, ReadOnlySpan<byte> remotePublicKey, ReadOnlySpan<byte> context)
+            => inner.DeriveKey(privateKey, remotePublicKey, context);
+    }
+
     private static string ToPairingQr(object payload)
     {
         var encoded = Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(payload))

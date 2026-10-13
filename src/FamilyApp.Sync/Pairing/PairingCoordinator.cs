@@ -151,6 +151,25 @@ public sealed class PairingCoordinator
         }
     }
 
+    public async Task<string> AcceptOfferForJoiningAsync(
+        FamilyDeviceIdentity identity, string offerQr, Func<Guid, Task> selectFamily,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(selectFamily);
+        var summary = InspectQrPayload(offerQr);
+        if (summary.Kind != PairingQrPayloadKind.Offer)
+            throw new InvalidOperationException("Scan an offer QR code from the other device.");
+        var candidate = new FamilyDeviceIdentity(summary.FamilyId, identity.DeviceId, identity.DisplayName);
+        ValidateOfferForJoining(candidate, offerQr);
+        // Acceptance can fail after preflight (expiry, key agreement or secure storage).
+        // Finish it before allowing the caller to persist a new family identity.
+        var response = await AcceptOfferAsync(candidate, offerQr, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        await selectFamily(candidate.FamilyId);
+        return response;
+    }
+
     public async Task<string> AcceptOfferAsync(
         FamilyDeviceIdentity identity,
         string offerQr,
