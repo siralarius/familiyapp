@@ -100,7 +100,6 @@
 
     private Task ScanOfferQr() => Run(async () =>
     {
-        waitingForJoin = false;
         diagnosticStep = "Opening camera";
         exceptionDetails = "";
         message = "Waiting for a QR code to be detected.";
@@ -133,7 +132,7 @@
             StateHasChanged();
         }
         await join;
-        Navigation.NavigateTo("/more");
+        if (!disposed) Navigation.NavigateTo("/more");
     });
 
     private async Task Run(Func<Task> action)
@@ -141,6 +140,12 @@
         if (busy) return;
         busy = true;
         try { await action(); }
+        catch (FormatException)
+        {
+            diagnosticStep = "Invalid family code";
+            message = "Enter a valid family code from the other phone.";
+            exceptionDetails = "";
+        }
         catch (Exception exception)
         {
             Console.Error.WriteLine($"Pairing failed: {exception.GetType().Name} (0x{exception.HResult:X8})");
