@@ -1,6 +1,8 @@
 @page "/shopping"
 @using FamilyApp.Core.Shopping
 @inject ShoppingListService ShoppingService
+@inject IServiceProvider Services
+@implements IDisposable
 
 <PageTitle>Shopping · Family</PageTitle>
 <div class="page shopping-page">
@@ -21,6 +23,10 @@ else { <div class="item-copy"><strong>@item.Name</strong><span>@Meta(item)</span
 </div>
 
 @code {
+private ShoppingCaptureService? capture;
+protected override void OnInitialized() { capture = Services.GetService(typeof(ShoppingCaptureService)) as ShoppingCaptureService; if (capture is not null) capture.Changed += OnCaptureChanged; }
+private void OnCaptureChanged() => _ = InvokeAsync(async () => { await Refresh(); StateHasChanged(); });
+public void Dispose() { if (capture is not null) capture.Changed -= OnCaptureChanged; }
 private List<ShoppingItem> items = []; private bool loaded; private string? newName, newQuantity; private Guid? editingId; private string? editName, editQuantity, editCategory;
 protected override async Task OnAfterRenderAsync(bool firstRender) { if (!firstRender) return; items = (await ShoppingService.GetAllAsync()).ToList(); loaded = true; StateHasChanged(); }
 private async Task Refresh() => items = (await ShoppingService.GetAllAsync()).ToList();

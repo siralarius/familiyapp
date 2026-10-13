@@ -44,3 +44,23 @@ Simulator launch and automated tests do not establish physical-camera acceptance
 ## Outstanding external configuration
 
 The native host currently uses local Wi-Fi transport. #2 still requires selection/configuration of a JWT issuer, durable public relay hosting, native token acquisition and two-phone tests on unrelated networks. Google Calendar OAuth in #25 is a browser deployment feature; native Google sign-in is not configured by the web client's Netlify setting.
+
+## Siri shopping
+
+The iOS build compiles `Platforms/iOS/Siri/ShoppingIntents.swift` with Xcode and
+packages Apple's generated `Metadata.appintents`. The small C bridge awaits the
+native local change-log write before Siri confirms success. No custom URL shortcut,
+ChatGPT account or new provisioning entitlement is needed. iOS 16+ exposes the action;
+the app retains its iOS 15 minimum and guards registration on older versions.
+
+Open **More → Set up Siri**. With English Siri say **“Add groceries with Family App”**,
+then answer the product prompt. The action opens the app and requires unlocking.
+Use Family App's built-in action in Shortcuts when using another Siri language;
+localized invocation phrases are not yet provided. Repeated open products preserve
+existing quantities. The shopping screen refreshes after a successful assistant write.
+
+Before completing #48, verify on the iPhone 14: spoken invocation while unlocked,
+with the app closed and while locked; permission prompts and unlock behavior;
+confirmation only after save; restart persistence and encrypted peer sync; and a clear
+failure for invalid input/storage failure. Simulator builds and unit tests are not proof
+of these Siri/system behaviors. Keep this PR manual-merge pending that acceptance.
