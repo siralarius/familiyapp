@@ -51,3 +51,6 @@ an agreed audio/AI service, secure backend authentication and an owner-approved 
 No API key may be embedded in the distributed app, and ChatGPT account access is not
 assumed to provide API billing. The versioned draft and atomic store are reusable for
 that later stage; export/import alone does not complete the issue.
+
+See the [live conversation connection design](live-meal-planning-design.md) for
+progressive draft behavior, access/cost decisions and the remaining device checks.
