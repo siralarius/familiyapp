@@ -91,6 +91,11 @@
     private Task CreateOfferQr() => Run(async () =>
     {
         waitingForJoin = false;
+        offerQrImage = "";
+        diagnosticStep = "Creating invitation";
+        exceptionDetails = "";
+        message = "Creating offer QR code…";
+        StateHasChanged();
         var offer = await Pairing.CreateOfferAsync();
         offerQrImage = await QrCodeRenderer.RenderPngDataUrlAsync(offer);
         offerCreatedAt = DateTimeOffset.UtcNow;
