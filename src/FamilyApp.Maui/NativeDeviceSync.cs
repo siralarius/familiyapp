@@ -56,20 +56,24 @@ public sealed class NativeDeviceSync : IDevicePairingService
         finally { _lifecycle.Release(); }
     }
 
-    public async Task JoinFromOfferAsync(string offer)
+    public async Task JoinFromOfferAsync(string offer, Action<string>? progress = null)
     {
+        progress?.Invoke("Checking the scanned offer");
         var summary = PairingCoordinator.InspectQrPayload(offer);
         if (summary.Kind != PairingQrPayloadKind.Offer || summary.DeviceId == Identity.DeviceId)
             throw new InvalidOperationException("Scan an offer QR code from the other device.");
         if (summary.ExpiresAtUtc <= DateTimeOffset.UtcNow)
             throw new InvalidOperationException("The pairing code has expired. Create a new offer.");
+        progress?.Invoke("Selecting the family and restarting local sync");
         await JoinFamilyAsync(summary.FamilyId);
+        progress?.Invoke("Creating and saving the pairing proof");
         var response = await _pairing.AcceptOfferAsync(Identity, offer);
         var peer = new PeerServiceEndpoint(PeerServiceEndpoint.CreateServiceName(summary.DeviceId),
             PeerDiscoveryDefaults.BonjourServiceType, "local.");
         var coordinator = new PeerSyncCoordinator(Identity, new BonjourPeerDiscovery(),
             new BonjourPeerTransport(), _pairing, _engine, statusService: _status);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        progress?.Invoke("Connecting to the offering device and exchanging encrypted data (30-second timeout)");
         try { await coordinator.PairAndSynchronizePeerAsync(peer, response, timeout.Token); }
         catch (Exception exception) when (exception is IOException or OperationCanceledException)
         {

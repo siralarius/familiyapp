@@ -11,6 +11,21 @@
 @inject PeerSyncStatusService SyncStatus
 @inject NavigationManager Navigation
 
+@if (!string.IsNullOrEmpty(diagnosticStep))
+{
+    <aside role="status" aria-live="polite" style="position:fixed;z-index:1000;top:8px;left:12px;right:12px;padding:16px;background:white;color:#17221c;border:2px solid #386a50;border-radius:12px;box-shadow:0 3px 12px #0003;max-height:45vh;overflow:auto;">
+        <strong>Pairing: @diagnosticStep</strong>
+        <p>@message</p>
+        @if (!string.IsNullOrEmpty(exceptionDetails))
+        {
+            <pre style="white-space:pre-wrap;overflow-wrap:anywhere;">@exceptionDetails</pre>
+        }
+        @if (!busy)
+        {
+            <button class="secondary-button" @onclick="DismissDiagnostics">Dismiss</button>
+        }
+    </aside>
+}
 <div class="page">
     <h1>Family devices</h1>
     <p>Keep both apps open on the same Wi-Fi.</p>
@@ -55,6 +70,7 @@
 @code {
     private string familyCode = "", incoming = "", outgoing = "", message = "", offerQrImage = "";
     private bool busy, waitingForJoin, disposed;
+    private string diagnosticStep = "", exceptionDetails = "";
     private DateTimeOffset offerCreatedAt;
 
     protected override void OnInitialized() => SyncStatus.Changed += OnSyncStatusChanged;
@@ -84,7 +100,13 @@
 
     private Task ScanOfferQr() => Run(async () =>
     {
+        waitingForJoin = false;
+        diagnosticStep = "Opening camera";
+        exceptionDetails = "";
+        message = "Waiting for a QR code to be detected.";
+        StateHasChanged();
         var scan = await QrScanner.ScanAsync();
+        diagnosticStep = $"Camera returned: {scan.Status}";
         if (scan.Status == QrScanStatus.PermissionDenied)
         {
             message = "Enable camera access in iPhone Settings to scan, or use manual pairing.";
@@ -98,7 +120,19 @@
         }
         message = "Joining your family and syncing…";
         StateHasChanged();
-        await Pairing.JoinFromOfferAsync(scan.Payload);
+        var join = Pairing.JoinFromOfferAsync(scan.Payload, step =>
+        {
+            diagnosticStep = step;
+            _ = InvokeAsync(StateHasChanged);
+        });
+        var timeout = Task.Delay(TimeSpan.FromSeconds(40));
+        if (await Task.WhenAny(join, timeout) != join)
+        {
+            diagnosticStep += " — still waiting";
+            message = "This step has taken over 40 seconds. The join has not completed. Please report the step shown above.";
+            StateHasChanged();
+        }
+        await join;
         Navigation.NavigateTo("/more");
     });
 
@@ -107,15 +141,20 @@
         if (busy) return;
         busy = true;
         try { await action(); }
-        catch (FormatException) { message = "Enter a valid family code."; }
-        catch (InvalidOperationException exception) { message = exception.Message; }
         catch (Exception exception)
         {
             Console.Error.WriteLine($"Pairing failed: {exception.GetType().Name} (0x{exception.HResult:X8})");
-            message = "Pairing could not finish. Keep both apps open on the same Wi-Fi and try a fresh offer.";
+            diagnosticStep = string.IsNullOrEmpty(diagnosticStep) ? "Failed" : diagnosticStep + " — failed";
+            message = exception is InvalidOperationException ? exception.Message : "Pairing could not finish. See the exception details below.";
+            var details = new List<string>();
+            for (Exception? error = exception; error is not null; error = error.InnerException)
+                details.Add($"{error.GetType().FullName} (0x{error.HResult:X8})");
+            exceptionDetails = string.Join("\nCaused by: ", details);
         }
         finally { busy = false; }
     }
+
+    private void DismissDiagnostics() { diagnosticStep = ""; exceptionDetails = ""; }
 
     public void Dispose()
     {
