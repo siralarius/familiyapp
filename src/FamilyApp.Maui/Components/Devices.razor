@@ -14,7 +14,10 @@
 <div class="page">
     <h1>Family devices</h1>
     <p>Keep both apps open on the same Wi-Fi.</p>
-    <p role="status">@message</p>
+    @if (waitingForJoin)
+    {
+        <p role="status">@message</p>
+    }
     <h2>Invite a family member</h2>
     <p>Show this QR code on your device. The new phone scans it to join and sync automatically.</p>
     <button class="primary-button" disabled="@busy" @onclick="CreateOfferQr">Create offer QR code</button>
@@ -25,6 +28,10 @@
     }
     <h2>Join a family</h2>
     <p>Scan the other device's offer to join that family. No response QR code is needed.</p>
+    @if (!waitingForJoin)
+    {
+        <p role="status">@message</p>
+    }
     <button class="primary-button" disabled="@busy" @onclick="ScanOfferQr">Scan QR and join</button>
 
     <details>
