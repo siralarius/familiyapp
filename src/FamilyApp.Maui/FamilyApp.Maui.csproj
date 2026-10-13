@@ -11,6 +11,10 @@
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
     <ApplicationVersion>1</ApplicationVersion>
   </PropertyGroup>
+  <PropertyGroup Condition="$(RuntimeIdentifier.StartsWith('iossimulator-'))">
+    <CodesignEntitlements>Platforms/iOS/SimulatorEntitlements.plist</CodesignEntitlements>
+    <CodesignKey>-</CodesignKey>
+  </PropertyGroup>
   <ItemGroup>
     <MauiIcon Include="Resources/AppIcon/appicon.svg" />
     <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.101" />
@@ -18,4 +22,15 @@
     <ProjectReference Include="../FamilyApp.Shared/FamilyApp.Shared.csproj" />
     <ProjectReference Include="../FamilyApp.Data/FamilyApp.Data.csproj" />
   </ItemGroup>
+  <Target Name="BuildShoppingAppIntents" BeforeTargets="_ExpandNativeReferences;_CollectBundleResources"
+          Inputs="Platforms/iOS/Siri/ShoppingIntents.swift;../../scripts/build-siri-intents.py"
+          Outputs="$(IntermediateOutputPath)siri/libFamilyShoppingIntents.a;$(IntermediateOutputPath)siri/Metadata.appintents/extract.actionsdata;$(IntermediateOutputPath)siri/Metadata.appintents/version.json"
+          Condition="'$(RuntimeIdentifier)' != ''">
+    <Exec Command="python3 &quot;$(MSBuildProjectDirectory)/../../scripts/build-siri-intents.py&quot; &quot;$(RuntimeIdentifier)&quot; &quot;$(MSBuildProjectDirectory)/$(IntermediateOutputPath)siri&quot;" />
+    <ItemGroup>
+      <NativeReference Include="$(IntermediateOutputPath)siri/libFamilyShoppingIntents.a" Kind="Static" ForceLoad="true" SmartLink="false" LinkWithSwiftSystemLibraries="true" Frameworks="AppIntents Foundation" />
+      <BundleResource Include="$(IntermediateOutputPath)siri/Metadata.appintents/extract.actionsdata" LogicalName="Metadata.appintents/extract.actionsdata" />
+      <BundleResource Include="$(IntermediateOutputPath)siri/Metadata.appintents/version.json" LogicalName="Metadata.appintents/version.json" />
+    </ItemGroup>
+  </Target>
 </Project>

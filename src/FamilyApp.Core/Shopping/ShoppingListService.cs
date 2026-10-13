@@ -40,31 +40,4 @@ public sealed class ShoppingListService(IShoppingRepository repository)
         var items = (await repository.GetAllAsync()).Where(x => x.Id != id).ToList();
         await repository.SaveAsync(items);
     }
-
-    public async Task<ShoppingVoiceAddResult> AddFromVoiceAsync(string name, string? quantity = null, string? category = null)
-    {
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            return ShoppingVoiceAddResult.Failure("Please say the product name you want to add.");
-        }
-
-        var normalizedName = name.Trim();
-        try
-        {
-            await AddAsync(normalizedName, quantity, category);
-            var exists = (await repository.GetAllAsync()).Any(x =>
-                string.Equals(x.Name, normalizedName, StringComparison.OrdinalIgnoreCase));
-            return exists
-                ? ShoppingVoiceAddResult.Success(normalizedName)
-                : ShoppingVoiceAddResult.Failure("I could not confirm the item was saved. Please try again.");
-        }
-        catch (ArgumentException)
-        {
-            return ShoppingVoiceAddResult.Failure("Please say the product name you want to add.");
-        }
-        catch
-        {
-            return ShoppingVoiceAddResult.Failure("I could not save that item. Please try again.");
-        }
-    }
 }

@@ -4,7 +4,7 @@ The iPhone host renders `FamilyApp.Shared` with MAUI Blazor Hybrid. Household ch
 
 ## Build on a Mac
 
-Use Xcode 26.5 and .NET SDK 10.0.300 (or a patch in the same 10.0.3xx feature band). The iOS workflow installs the SDK selected by this directory’s `global.json`. Keep the SDK in the 10.0.300 feature band: workload set 10.0.300.3 contains the iOS 26.5 workload, and changing SDK feature bands changes the workload-set package used during installation. Run these commands from this directory. The workload version comes from `global.json`; do not also pass `--version` to `dotnet workload install`:
+Use Xcode 26.5 and a .NET 10 SDK compatible with the minimum version in this directory’s `global.json`. The `latestFeature` policy permits installed newer .NET 10 feature bands, including 10.0.401. The workload version remains pinned to 10.0.300.3 for iOS 26.5. Run workload installation and native build commands from this directory so that pin applies; do not also pass `--version` to `dotnet workload install`. Simulator builds use ad-hoc signing and do not require an Apple Development certificate. Physical iPhone builds still require your personal signing identity and provisioning profile.
 
 ```sh
 sudo dotnet workload install maui-ios
@@ -41,19 +41,26 @@ Open Family App on the phone after installation. Certificate/profile setup is pe
 
 Simulator launch and automated tests do not establish physical-camera acceptance or physical two-iPhone pairing acceptance. Record device models, OS versions and observed convergence before closing #1/#12/#13/#14. iOS suspends ordinary apps in the background; this host resumes sync when active rather than promising background connectivity.
 
-## Siri shopping shortcut acceptance
-
-Family App includes an in-app Siri setup guide at More -> Set up Siri. The current native integration uses a Siri-triggered shortcut URL endpoint (`familyapp://shopping/add?item=...`) that writes through the same local SQLite shopping service and sync pipeline as manual edits.
-
-Physical-device acceptance for #48 must validate:
-
-1. Trigger Siri with the configured phrase and add an item (for example, milk), then verify it appears in Shopping.
-2. Force-close and reopen Family App; the item must remain.
-3. If a second trusted phone is paired and reachable, verify the new item syncs normally.
-4. Test from a locked device and while the app is closed. If iOS requests unlock or briefly foregrounds the app, record that as the observed platform behavior rather than promising lock-screen background execution.
-
-Browser checks and automated tests do not replace this physical Siri verification.
-
 ## Outstanding external configuration
 
 The native host currently uses local Wi-Fi transport. #2 still requires selection/configuration of a JWT issuer, durable public relay hosting, native token acquisition and two-phone tests on unrelated networks. Google Calendar OAuth in #25 is a browser deployment feature; native Google sign-in is not configured by the web client's Netlify setting.
+
+## Siri shopping
+
+The iOS build compiles `Platforms/iOS/Siri/ShoppingIntents.swift` with Xcode and
+packages Apple's generated `Metadata.appintents`. The small C bridge awaits the
+native local change-log write before Siri confirms success. No custom URL shortcut,
+ChatGPT account or new provisioning entitlement is needed. iOS 16+ exposes the action;
+the app retains its iOS 15 minimum and guards registration on older versions.
+
+Open **More → Set up Siri**. With English Siri say **“Add groceries with Family App”**,
+then answer the product prompt. The action opens the app and requires unlocking.
+Use Family App's built-in action in Shortcuts when using another Siri language;
+localized invocation phrases are not yet provided. Repeated open products preserve
+existing quantities. The shopping screen refreshes after a successful assistant write.
+
+Before completing #48, verify on the iPhone 14: spoken invocation while unlocked,
+with the app closed and while locked; permission prompts and unlock behavior;
+confirmation only after save; restart persistence and encrypted peer sync; and a clear
+failure for invalid input/storage failure. Simulator builds and unit tests are not proof
+of these Siri/system behaviors. Keep this PR manual-merge pending that acceptance.

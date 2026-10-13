@@ -33,6 +33,8 @@ public static class MauiProgram
         builder.Services.AddSingleton<IMealPlanRepository>(sp => sp.GetRequiredService<LocalFamilyRepositories>());
         builder.Services.AddSingleton<IFamilyEventRepository>(sp => sp.GetRequiredService<LocalFamilyRepositories>());
         builder.Services.AddSingleton<ShoppingListService>();
+        builder.Services.AddSingleton<IShoppingCaptureStore>(sp => new LocalShoppingCaptureStore(sp.GetRequiredService<ChangeLogEngine>(), parsedId.ToString("N")));
+        builder.Services.AddSingleton<ShoppingCaptureService>();
         builder.Services.AddSingleton<InventoryService>();
         builder.Services.AddSingleton<MealPlanService>();
         builder.Services.AddSingleton<FamilyCalendarService>();
@@ -45,6 +47,8 @@ public static class MauiProgram
         builder.Services.AddSingleton<IQrScanner, NativeQrScanner>();
         builder.Services.AddSingleton<NativeDeviceSync>();
         builder.Services.AddSingleton<IDevicePairingService>(sp => sp.GetRequiredService<NativeDeviceSync>());
-        return builder.Build();
+        var app = builder.Build();
+        NativeShoppingIntents.Register(app.Services.GetRequiredService<ShoppingCaptureService>());
+        return app;
     }
 }

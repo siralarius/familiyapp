@@ -14,22 +14,9 @@
 	<string>Family App uses your local network to find trusted family devices for syncing.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Family App uses the camera to scan family pairing QR codes.</string>
-	<key>NSSiriUsageDescription</key>
-	<string>Family App uses Siri shortcuts so you can add shopping items by voice.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_familyapp-sync._tcp</string>
-	</array>
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleURLName</key>
-			<string>com.siralarius.familyapp.shortcuts</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>familyapp</string>
-			</array>
-		</dict>
 	</array>
 </dict>
 </plist>

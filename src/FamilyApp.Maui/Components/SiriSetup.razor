@@ -1,0 +1,37 @@
+@page "/siri-setup"
+@using FamilyApp.Core.Shopping
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
+@inject ShoppingCaptureService Shopping
+<h1>Set up Siri</h1>
+<div class="page">
+    <p>Add groceries by speaking. Your product is saved on this phone, then syncs with your trusted family devices.</p>
+    <ol>
+        <li>Open Family App once after installing it. This registers the built-in shopping action on iOS 16 or later.</li>
+        <li>In iPhone Settings, find Siri (or Apple Intelligence &amp; Siri), enable talking to Siri, and allow Siri for Family App if your phone asks.</li>
+        <li>Say <strong>“Siri, add groceries with Family App.”</strong> When Siri asks what to add, say <strong>“Milk.”</strong> You can also run <strong>Add to family shopping</strong> from Family App's actions in the Shortcuts app.</li>
+        <li>Unlock your iPhone if asked. Family App opens to save the product; wait for Siri's confirmation, then check Shopping.</li>
+    </ol>
+    <p>No custom shortcut or ChatGPT account is needed. If Siri requests permission to run the action, allow it in the iPhone prompt. Siri may need an internet connection; Family App's shopping storage works offline.</p>
+    <h2>Quick test</h2>
+    <p>First test while unlocked. Then try with Family App closed, and finally while the phone is locked. The action opens the app and requires unlocking; it does not silently write while locked.</p>
+    <button class="secondary-button" @onclick="Test">Test local save with “Siri test product”</button>
+    @if (message is not null) { <p role="status">@message</p> }
+    <p>The test button checks local storage. Use the spoken phrase above to test Siri itself. You can delete the test product from Shopping.</p>
+    <h2>If Siri cannot find the action</h2>
+    <p>Open Family App again, look for its built-in action in Shortcuts, and check that Siri is enabled for your language. Use the exact English phrase above when Siri is set to English. If you use another Siri language, run the built-in Shortcuts action until localized phrases are available. No changes to your family pairing are needed.</p>
+    <p>If saving fails, Siri should report a failure. Open Shopping to check before retrying. Repeating an existing open product keeps its original quantity.</p>
+    <a href="/shopping">Go to Shopping</a> · <a href="/more">Back to More</a>
+</div>
+@code {
+    private string? message;
+    private bool busy;
+    private async Task Test()
+    {
+        if (busy) return;
+        busy = true;
+        try { message = await Shopping.AddAsync("Siri test product"); }
+        catch { message = "Could not save the test product. Open Shopping and try again."; }
+        finally { busy = false; }
+    }
+}
