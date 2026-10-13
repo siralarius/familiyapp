@@ -21,13 +21,44 @@ public sealed class PlanningImportTests : IDisposable
         Assert.Equal(new(1, 1, 1), result);
         var restarted = Open();
         Assert.True((await new LocalPlanningImportStore(restarted, "a").SaveAsync(plan)).AlreadyImported);
-        Assert.Equal(3, restarted.Changes.Count);
+        Assert.Equal(4, restarted.Changes.Count);
         var peer = new ChangeLogEngine(); peer.Merge(restarted.Changes);
         var repositories = new LocalFamilyRepositories(peer, "b");
         Assert.Equal("Tortilla española", Assert.Single(await ((IMealPlanRepository)repositories).GetAllAsync()).Description);
         Assert.Equal("6", Assert.Single(await ((IShoppingRepository)repositories).GetAllAsync()).Quantity);
         Assert.True((await new LocalPlanningImportStore(peer, "b").SaveAsync(plan)).AlreadyImported);
-        Assert.Equal(3, peer.Changes.Count);
+        Assert.Equal(4, peer.Changes.Count);
+    }
+    [Fact]
+    public async Task OfflineSkipSuppressesTheSameImportedPurchaseOnAnotherDevice()
+    {
+        var first = Open();
+        var second = new ChangeLogEngine();
+        IShoppingRepository firstShopping = new LocalFamilyRepositories(first, "a");
+        await firstShopping.GetAllAsync();
+        var existing = ShoppingItem.Create("Huevos", "2");
+        await firstShopping.SaveAsync([existing]);
+        var plan = new PreparedPlanningImport(Guid.NewGuid(), [], [ShoppingItem.Create(" huevos ", "6")]);
+        Assert.Equal(1, (await new LocalPlanningImportStore(first, "a").SaveAsync(plan)).PurchasesSkipped);
+        Assert.Equal(1, (await new LocalPlanningImportStore(second, "b").SaveAsync(plan)).PurchasesAdded);
+        first.Merge(second.Changes); second.Merge(first.Changes);
+        foreach (var engine in new[] { first, second })
+        {
+            IShoppingRepository shopping = new LocalFamilyRepositories(engine, "check");
+            Assert.Equal(existing, Assert.Single(await shopping.GetAllAsync()));
+            Assert.True((await new LocalPlanningImportStore(engine, "check").SaveAsync(plan)).AlreadyImported);
+        }
+        var restarted = Open();
+        IShoppingRepository afterRestart = new LocalFamilyRepositories(restarted, "a");
+        Assert.Equal(existing, Assert.Single(await afterRestart.GetAllAsync()));
+        second.Merge(restarted.Changes); first.Merge(second.Changes);
+        Assert.Equal(existing, Assert.Single(await afterRestart.GetAllAsync()));
+        await afterRestart.SaveAsync([]);
+        Assert.True((await new LocalPlanningImportStore(restarted, "a").SaveAsync(plan)).AlreadyImported);
+        second.Merge(restarted.Changes);
+        IShoppingRepository peerShopping = new LocalFamilyRepositories(second, "b");
+        Assert.Empty(await afterRestart.GetAllAsync());
+        Assert.Empty(await peerShopping.GetAllAsync());
     }
     [Fact]
     public async Task ExistingMealPreventsWholeImportWithoutOverwritingOrPartialShoppingSave()
