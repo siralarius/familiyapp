@@ -25,7 +25,7 @@ function receipts(comments) {
 function decisiveReviews(reviews) {
   const latest = new Map();
   for (const review of [...reviews].sort((a, b) => a.id - b.id)) {
-    if (['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'].includes(review.state)) latest.set(review.user.id, review);
+    if (['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'].includes(review.state)) latest.set(review.user?.id ?? `unknown:${review.id}`, review);
   }
   return [...latest.values()];
 }
@@ -34,9 +34,16 @@ function reason(snapshot) {
   const preview = snapshot.statuses.find(x => x.context === PREVIEW_CONTEXT && ['failure', 'error'].includes(x.state));
   const copilot = snapshot.reviews.filter(x => x.user?.id === 175728472 && x.body?.startsWith('<!-- ccr-overview-v2 -->')).sort((a, b) => b.id - a.id)[0];
   const recommendedReview = copilot && /### 🟡 Changes recommended/.test(copilot.body) ? copilot.id : undefined;
-  const findings = snapshot.threads.filter(x => !x.isResolved && !x.isOutdated && x.comments.nodes.some(c =>
+  const latestReviews = decisiveReviews(snapshot.reviews);
+  const superseded = comment => {
+    const original = snapshot.reviews.find(r => r.id === comment.pullRequestReview?.databaseId);
+    if (!original?.user?.id || original.state !== 'CHANGES_REQUESTED') return false;
+    return latestReviews.some(r => r.user?.id === original.user.id && r.id > original.id &&
+      ['APPROVED', 'DISMISSED'].includes(r.state));
+  };
+  const findings = snapshot.threads.filter(x => !x.isResolved && !x.isOutdated && x.comments.nodes.some(c => !superseded(c) && (
     /\bP[0-2]\b/.test(c.body) || c.pullRequestReview?.state === 'CHANGES_REQUESTED' ||
-    (recommendedReview !== undefined && c.pullRequestReview?.databaseId === recommendedReview)));
+    (recommendedReview !== undefined && c.pullRequestReview?.databaseId === recommendedReview))));
   const reviews = decisiveReviews(snapshot.reviews).filter(x => x.state === 'CHANGES_REQUESTED');
   return { failed, preview, findings, reviews, actionable: !!(failed.length || preview || findings.length || reviews.length) };
 }

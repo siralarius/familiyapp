@@ -129,3 +129,19 @@ test('only fully verified repaired heads resolve targeted outdated findings; PR 
     if (scenario === 'verified') assert.match(m.writes[0].body, /PR remains open.*Linked issues remain open/);
   }
 });
+
+test('active change-request threads are superseded only by the same known reviewer', () => {
+  const request = { id: 1, user: { id: 10 }, state: 'CHANGES_REQUESTED' };
+  const thread = { ...state.threads[0], comments: { nodes: [{ body: 'P2: Fix this', pullRequestReview: { databaseId: 1, state: 'CHANGES_REQUESTED' } }] } };
+  const quiet = { ...state, runs: [], statuses: [], threads: [thread] };
+  for (const outcome of ['APPROVED', 'DISMISSED']) {
+    assert.equal(reason({ ...quiet, reviews: [request, { id: 2, user: { id: 10 }, state: outcome }] }).actionable, false);
+    assert.equal(reason({ ...quiet, reviews: [request, { id: 2, user: { id: 11 }, state: outcome }] }).actionable, true);
+  }
+  assert.equal(reason({ ...quiet, reviews: [request, { id: 2, user: null, state: 'APPROVED' }] }).actionable, true);
+});
+test('unavailable review authors do not crash or clear another unknown change request', () => {
+  const quiet = { ...state, runs: [], statuses: [], threads: [] };
+  assert.equal(reason({ ...quiet, reviews: [{ id: 1, user: null, state: 'APPROVED' }] }).actionable, false);
+  assert.equal(reason({ ...quiet, reviews: [{ id: 1, user: null, state: 'CHANGES_REQUESTED' }, { id: 2, user: null, state: 'APPROVED' }] }).actionable, true);
+});
