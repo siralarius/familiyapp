@@ -101,6 +101,7 @@ public sealed class PeerSyncCoordinator
                         var expected = EncryptedPeerSyncSession.CreatePairingReceipt(trustedSecret, response);
                         if (!CryptographicOperations.FixedTimeEquals(receipt.Span, expected))
                             throw new CryptographicException("Pairing confirmation was not authenticated.");
+                        await connection.SendAsync(EncryptedPeerSyncSession.CreatePairingConfirmation(trustedSecret, response), cancellationToken);
                     }
                     await ReportAsync(peerDeviceId, PeerSyncState.Synchronized, cancellationToken: cancellationToken,
                         pairingCompleted: pairingCompleted);
@@ -257,13 +258,24 @@ public sealed class EncryptedPeerSyncSession
         var applied = changeLog.Merge(remoteChanges);
         await connection.AcknowledgeAsync(cancellationToken);
         if (confirmPairing)
+        {
             await connection.SendAsync(CreatePairingReceipt(trustedSecret.Span, inbound.Span), cancellationToken);
+            var confirmation = await connection.ReceiveAsync(cancellationToken);
+            var expected = CreatePairingConfirmation(trustedSecret.Span, inbound.Span);
+            if (!CryptographicOperations.FixedTimeEquals(confirmation.Span, expected))
+                throw new CryptographicException("The offering device did not authenticate pairing completion.");
+        }
         return applied;
     }
 
     internal static byte[] CreatePairingReceipt(ReadOnlySpan<byte> secret, ReadOnlySpan<byte> response)
+        => CreatePairingProof(secret, response, "familyapp-pairing-receipt-v1"u8);
+
+    internal static byte[] CreatePairingConfirmation(ReadOnlySpan<byte> secret, ReadOnlySpan<byte> response)
+        => CreatePairingProof(secret, response, "familyapp-pairing-confirmed-v1"u8);
+
+    private static byte[] CreatePairingProof(ReadOnlySpan<byte> secret, ReadOnlySpan<byte> response, ReadOnlySpan<byte> context)
     {
-        var context = "familyapp-pairing-receipt-v1"u8;
         var data = new byte[context.Length + 32];
         context.CopyTo(data);
         SHA256.HashData(response).CopyTo(data, context.Length);

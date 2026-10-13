@@ -85,6 +85,38 @@ public class PeerSyncCoordinatorTests
         await Assert.ThrowsAsync<ChannelClosedException>(async () => await guestConnection.ReceiveAsync(token));
     }
 
+    [Theory]
+    [InlineData("tampered-receipt")]
+    [InlineData("dropped-receipt")]
+    [InlineData("tampered-host-ack")]
+    public async Task Joiner_waits_for_authenticated_host_acceptance_of_its_receipt(string fault)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(2));
+        var token = timeout.Token;
+        var family = Guid.NewGuid();
+        var host = Identity(family); var guest = Identity(family);
+        var hostPairing = Pairing(new FakeSecurePairingStore()); var guestPairing = Pairing(new FakeSecurePairingStore());
+        var response = await guestPairing.AcceptOfferAsync(guest, await hostPairing.CreateOfferAsync(host, token), token);
+        var (hostConnection, guestConnection) = InMemoryPeerConnection.CreatePair();
+        var hostSync = Coordinator(host, hostPairing, new ChangeLogEngine(), new FakePeerTransport(null));
+        var guestSync = Coordinator(guest, guestPairing, new ChangeLogEngine(),
+            new FakePeerTransport(new FaultedPairingConnection(guestConnection, fault)));
+        PeerSyncStatus? hostStatus = null, guestStatus = null;
+        hostSync.StatusChanged += status => hostStatus = status;
+        guestSync.StatusChanged += status => guestStatus = status;
+        var hostTask = hostSync.HandleIncomingPeerAsync(hostConnection, token);
+        await Assert.ThrowsAnyAsync<Exception>(() => guestSync.PairAndSynchronizePeerAsync(Endpoint(host.DeviceId), response, token));
+        try { await hostTask; } catch (OperationCanceledException) when (timeout.IsCancellationRequested) { }
+        Assert.NotEqual(true, guestStatus?.PairingCompleted);
+        Assert.NotEqual(PeerSyncState.Synchronized, guestStatus?.State);
+        if (fault != "tampered-host-ack")
+        {
+            Assert.NotEqual(true, hostStatus?.PairingCompleted);
+            Assert.NotEqual(PeerSyncState.Synchronized, hostStatus?.State);
+        }
+    }
+
     [Fact]
     public async Task Joiner_does_not_report_success_if_host_confirmation_is_tampered()
     {
@@ -384,6 +416,27 @@ public class PeerSyncCoordinatorTests
 
         public async Task<ReadOnlyMemory<byte>> ReceiveAsync(CancellationToken cancellationToken = default)
             => await incoming.ReadAsync(cancellationToken);
+    }
+
+    private sealed class FaultedPairingConnection(IPeerConnection inner, string fault) : IPeerConnection
+    {
+        private int sends, receives;
+        public ValueTask DisposeAsync() => inner.DisposeAsync();
+        public Task SendAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default)
+        {
+            if (++sends == 3)
+            {
+                if (fault == "dropped-receipt") return Task.CompletedTask;
+                if (fault == "tampered-receipt") { var bytes = message.ToArray(); bytes[0] ^= 1; return inner.SendAsync(bytes, cancellationToken); }
+            }
+            return inner.SendAsync(message, cancellationToken);
+        }
+        public async Task<ReadOnlyMemory<byte>> ReceiveAsync(CancellationToken cancellationToken = default)
+        {
+            var message = await inner.ReceiveAsync(cancellationToken);
+            if (++receives == 2 && fault == "tampered-host-ack") { var bytes = message.ToArray(); bytes[0] ^= 1; return bytes; }
+            return message;
+        }
     }
 
     private sealed class TamperingPeerConnection(IPeerConnection inner) : IPeerConnection
