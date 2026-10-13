@@ -1,3 +1,4 @@
+using System.Globalization;
 using FamilyApp.Core.Meals;
 using FamilyApp.Core.Planning;
 using Xunit;
@@ -22,6 +23,21 @@ public sealed class PlanningDraftTests
         Assert.Equal("6", Assert.Single(prepared.Shopping).Quantity);
         Assert.False(draft.Meals[1].Include); Assert.False(draft.Shopping[1].Include);
         Assert.Equal(prepared.Meals[0].Id, service.Read(Json()).Prepare().Meals[0].Id);
+    }
+    [Fact]
+    public void ImportedEntityIdsAreIdenticalAcrossDeviceCultures()
+    {
+        var original = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
+            var english = new PlanningImportService(new NeverSave()).Read(Json()).Prepare();
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("ar-SA");
+            var arabic = new PlanningImportService(new NeverSave()).Read(Json()).Prepare();
+            Assert.Equal(english.Meals.Select(x => x.Id), arabic.Meals.Select(x => x.Id));
+            Assert.Equal(english.Shopping.Select(x => x.Id), arabic.Shopping.Select(x => x.Id));
+        }
+        finally { CultureInfo.CurrentCulture = original; }
     }
     [Theory]
     [InlineData("missing-date")]
