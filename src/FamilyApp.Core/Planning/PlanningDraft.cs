@@ -90,7 +90,7 @@ public sealed class PlanningDraft
         return new(ImportId, meals, shopping);
     }
 
-    private Guid EntryId(string type, int index) => new(SHA256.HashData(Encoding.UTF8.GetBytes($"{ImportId:N}/{type}/{index}"))[..16]);
+    private Guid EntryId(string type, int index) => new(SHA256.HashData(Encoding.UTF8.GetBytes(FormattableString.Invariant($"{ImportId:N}/{type}/{index}")))[..16]);
 
     private static void ValidateText(string? value, string label, bool required = true)
     {
@@ -112,7 +112,7 @@ public sealed class DraftPurchase
     public string? Name { get; set; }
     public string? Quantity { get; set; }
     public string? Unit { get; set; }
-    public string Source { get; set; } = "explicit";
+    public string Source { get; set; } = "";
     [JsonIgnore] public bool Include { get; set; }
 }
 public sealed record PreparedPlanningImport(Guid ImportId, IReadOnlyList<MealPlanEntry> Meals, IReadOnlyList<ShoppingItem> Shopping);
