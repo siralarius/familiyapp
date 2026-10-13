@@ -2,6 +2,7 @@
 @using FamilyApp.Maui
 @using FamilyApp.Sync.Pairing
 @using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
 @inject IDevicePairingService Pairing
 @inject IQrScanner QrScanner
 @inject IQrCodeRenderer QrCodeRenderer
@@ -11,11 +12,12 @@
     <p>Keep both phones open on the same Wi-Fi while pairing and syncing.</p>
     <p>Your family code: <strong>@Pairing.Identity.FamilyId</strong></p>
     <p>On a new phone, scan the offer QR code and confirm joining before adding household data.</p>
+    <p role="status">@message</p>
     <button class="primary-button" @onclick="CreateOfferQr">Create offer QR code</button>
     @if (!string.IsNullOrEmpty(offerQrImage))
     {
         <p>Scan this code on the new phone:</p>
-        <img alt="Pairing offer QR code" src="@offerQrImage" style="max-width:260px;width:100%;height:auto;" />
+        <img alt="Pairing offer QR code" src="@offerQrImage" style="display:block;max-width:360px;width:calc(100% - 48px);height:auto;padding:24px;background:white;image-rendering:pixelated;" />
     }
 
     <h2>Join from this phone</h2>
@@ -29,7 +31,7 @@
     @if (!string.IsNullOrEmpty(responseQrImage))
     {
         <p>Show this response QR code to the first phone:</p>
-        <img alt="Pairing response QR code" src="@responseQrImage" style="max-width:260px;width:100%;height:auto;" />
+        <img alt="Pairing response QR code" src="@responseQrImage" style="display:block;max-width:360px;width:calc(100% - 48px);height:auto;padding:24px;background:white;image-rendering:pixelated;" />
     }
 
     <h2>Complete on first phone</h2>
@@ -49,7 +51,6 @@
         <p>Copy this code to the other phone:</p>
         <textarea aria-label="Generated pairing code" readonly value="@outgoing"></textarea>
     }
-    <p role="status">@message</p>
     <a href="/more">Back to sync status</a>
 </div>
 
@@ -142,6 +143,10 @@
         try { await action(); }
         catch (FormatException) { message = "Enter a valid family code."; }
         catch (InvalidOperationException exception) { message = exception.Message; }
-        catch { message = "Pairing could not finish. Check the code and try again."; }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine($"Pairing failed: {exception.GetType().Name} (0x{exception.HResult:X8})");
+            message = "Pairing could not finish. Check the code and try again.";
+        }
     }
 }

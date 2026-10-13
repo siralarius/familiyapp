@@ -17,7 +17,7 @@ public sealed class NativeQrCodeRenderer : IQrCodeRenderer
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(payload)) throw new ArgumentException("The QR payload is required.", nameof(payload));
 
-        using var filter = CIFilter.CreateQRCodeGenerator();
+        using var filter = new CIQRCodeGenerator();
         if (filter is null) throw new InvalidOperationException("QR code rendering is unavailable.");
 
         filter.SetDefaults();
@@ -26,8 +26,11 @@ public sealed class NativeQrCodeRenderer : IQrCodeRenderer
 
         using var output = filter.OutputImage ?? throw new InvalidOperationException("QR code rendering failed.");
         using var scaled = output.ImageByApplyingTransform(CGAffineTransform.MakeScale(10, 10));
-        using var image = _context.CreateCGImage(scaled, scaled.Extent);
-        using var png = UIImage.FromImage(image).AsPNG();
+        using var image = _context.CreateCGImage(scaled, scaled.Extent)
+            ?? throw new InvalidOperationException("QR image rendering failed.");
+        using var uiImage = UIImage.FromImage(image);
+        using var png = uiImage.AsPNG()
+            ?? throw new InvalidOperationException("QR PNG encoding failed.");
         return Task.FromResult($"data:image/png;base64,{png.GetBase64EncodedString(NSDataBase64EncodingOptions.None)}");
     }
 }
@@ -36,13 +39,13 @@ public sealed class NativeQrScanner : IQrScanner
 {
     public async Task<QrScanResult> ScanAsync(CancellationToken cancellationToken = default)
     {
-        var cameraStatus = AVCaptureDevice.GetAuthorizationStatus(AVMediaType.Video);
+        var cameraStatus = AVCaptureDevice.GetAuthorizationStatus(AVAuthorizationMediaType.Video);
         if (cameraStatus is AVAuthorizationStatus.Denied or AVAuthorizationStatus.Restricted)
             return new QrScanResult(QrScanStatus.PermissionDenied);
 
         if (cameraStatus == AVAuthorizationStatus.NotDetermined)
         {
-            var granted = await AVCaptureDevice.RequestAccessForMediaTypeAsync(AVMediaType.Video);
+            var granted = await AVCaptureDevice.RequestAccessForMediaTypeAsync(AVAuthorizationMediaType.Video);
             if (!granted) return new QrScanResult(QrScanStatus.PermissionDenied);
         }
 
@@ -80,7 +83,7 @@ public sealed class NativeQrScanner : IQrScanner
         {
             base.ViewDidLoad();
             View!.BackgroundColor = UIColor.Black;
-            var device = AVCaptureDevice.GetDefaultDevice(AVMediaType.Video);
+            var device = AVCaptureDevice.GetDefaultDevice(AVMediaTypes.Video);
             if (device is null)
             {
                 Complete(new QrScanResult(QrScanStatus.Unsupported));
@@ -105,7 +108,7 @@ public sealed class NativeQrScanner : IQrScanner
 
             _session.AddOutput(output);
             output.SetDelegate(this, DispatchQueue.MainQueue);
-            output.MetadataObjectTypes = [AVMetadataObjectType.QRCode];
+            output.MetadataObjectTypes = AVMetadataObjectType.QRCode;
 
             _preview = new AVCaptureVideoPreviewLayer(_session)
             {
@@ -141,7 +144,7 @@ public sealed class NativeQrScanner : IQrScanner
             if (_preview is not null) _preview.Frame = View!.Bounds;
         }
 
-        [Export("metadataOutput:didOutputMetadataObjects:fromConnection:")]
+        [Export("captureOutput:didOutputMetadataObjects:fromConnection:")]
         public void DidOutputMetadataObjects(AVCaptureMetadataOutput output, AVMetadataObject[] metadataObjects,
             AVCaptureConnection connection)
         {
