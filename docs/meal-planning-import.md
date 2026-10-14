@@ -29,8 +29,9 @@ purchases start unselected. Inferred ingredients require the user's explicit sel
 Resolve every question, edit dates/dishes/quantities together, then confirm the selected
 entries. A conflicting existing meal prevents the entire save; it is never overwritten.
 Existing open purchases are skipped case-insensitively without changing quantities.
-A skip also records a tombstone for that import entry ID, so an offline peer importing
-the same draft cannot reintroduce it beside the existing product during sync.
+A skip also records a permanent tombstone for that import entry ID, so an offline peer
+importing or editing the same draft cannot reintroduce it beside the existing product
+during sync. The existing product keeps its own ID and remains editable/deletable.
 
 The import receipt and deterministic entry IDs travel through existing encrypted sync.
 Repeated imports do not create more entries after restart or receipt delivery. Concurrent

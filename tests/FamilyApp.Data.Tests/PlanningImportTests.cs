@@ -41,6 +41,12 @@ public sealed class PlanningImportTests : IDisposable
         var plan = new PreparedPlanningImport(Guid.NewGuid(), [], [ShoppingItem.Create(" huevos ", "6")]);
         Assert.Equal(1, (await new LocalPlanningImportStore(first, "a").SaveAsync(plan)).PurchasesSkipped);
         Assert.Equal(1, (await new LocalPlanningImportStore(second, "b").SaveAsync(plan)).PurchasesAdded);
+        IShoppingRepository offlineShopping = new LocalFamilyRepositories(second, "b");
+        var imported = Assert.Single(await offlineShopping.GetAllAsync());
+        await offlineShopping.SaveAsync([imported with { Quantity = "12" }]);
+        await offlineShopping.GetAllAsync();
+        await offlineShopping.SaveAsync([imported with { Quantity = "18" }]);
+        Assert.Equal(3, second.GetCurrent("shopping", imported.Id)!.Version);
         first.Merge(second.Changes); second.Merge(first.Changes);
         foreach (var engine in new[] { first, second })
         {
