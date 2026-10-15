@@ -29,7 +29,9 @@ purchases start unselected. Inferred ingredients require the user's explicit sel
 Resolve every question, edit dates/dishes/quantities together, then confirm the selected
 entries. A conflicting existing meal prevents the entire save; it is never overwritten.
 Existing open purchases are skipped case-insensitively without changing quantities.
-A skip also records a permanent tombstone for that import entry ID, so an offline peer
+A skip also records a terminal tombstone at the reserved maximum revision for that
+never-reusable import entry ID, using the existing protocol-1 version ordering. Older
+clients interpret it identically, so an offline peer
 importing or editing the same draft cannot reintroduce it beside the existing product
 during sync. The existing product keeps its own ID and remains editable/deletable.
 

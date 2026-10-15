@@ -38,13 +38,13 @@ public sealed class LocalPlanningImportStore(ChangeLogEngine engine, string devi
                 {
                     skipped++;
                     // An offline peer can add this same deterministic import ID. Publish a
-                    // permanent tombstone so offline adds/edits cannot duplicate the existing item.
+                    // terminal tombstone so offline adds/edits cannot duplicate the existing item.
+                    // The reserved maximum version uses the existing protocol-1 ordering:
+                    // older clients also suppress this never-reusable import entry ID.
                     // Never delete an existing product that already has this exact entity ID.
                     if (!existingShopping.Any(x => x.Id == item.Id))
                         changes.Add(new ChangeRecord(Guid.NewGuid(), deviceId, "shopping", item.Id,
-                            checked((current.Where(x => x.EntityType == "shopping" && x.EntityId == item.Id)
-                                .Select(x => x.Version).DefaultIfEmpty(1).Max()) + 1),
-                            DateTimeOffset.UtcNow, true, "", isPermanentTombstone: true));
+                            long.MaxValue, DateTimeOffset.UtcNow, true, ""));
                 }
             }
             result = new(draft.Meals.Count, draft.Shopping.Count - skipped, skipped);

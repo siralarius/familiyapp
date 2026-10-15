@@ -85,11 +85,7 @@ public sealed class ChangeLogEngine
 
     private static int Compare(ChangeRecord left, ChangeRecord right)
     {
-        // Permanent deletions dominate concurrent or later writes, independently
-        // of their revision. Ordinary tombstones retain the normal version ordering.
-        var result = left.IsPermanentTombstone.CompareTo(right.IsPermanentTombstone);
-        if (result != 0) return result;
-        result = left.Version.CompareTo(right.Version);
+        var result = left.Version.CompareTo(right.Version);
         if (result != 0) return result;
         result = left.Timestamp.CompareTo(right.Timestamp);
         if (result != 0) return result;

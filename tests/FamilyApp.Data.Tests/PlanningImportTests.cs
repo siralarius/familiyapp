@@ -54,6 +54,10 @@ public sealed class PlanningImportTests : IDisposable
             Assert.Equal(existing, Assert.Single(await shopping.GetAllAsync()));
             Assert.True((await new LocalPlanningImportStore(engine, "check").SaveAsync(plan)).AlreadyImported);
         }
+        var recordCount = second.Changes.Count;
+        await offlineShopping.SaveAsync([imported with { Quantity = "30" }]);
+        await offlineShopping.SaveAsync([]);
+        Assert.Equal(recordCount, second.Changes.Count);
         var restarted = Open();
         IShoppingRepository afterRestart = new LocalFamilyRepositories(restarted, "a");
         Assert.Equal(existing, Assert.Single(await afterRestart.GetAllAsync()));

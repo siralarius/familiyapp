@@ -70,36 +70,21 @@ public class ChangeLogEngineTests
     }
 
     [Fact]
-    public void Permanent_tombstone_survives_serialization_and_dominates_later_edits_in_any_order()
+    public void Terminal_import_tombstone_uses_existing_serialization_and_version_ordering()
     {
         var id = Guid.NewGuid();
-        var removed = new ChangeRecord(Guid.NewGuid(), "a", "shopping", id, 2,
-            DateTimeOffset.UtcNow, true, "", isPermanentTombstone: true);
-        var restored = JsonSerializer.Deserialize<ChangeRecord>(JsonSerializer.Serialize(removed))!;
+        var removed = Change("shopping", id, "a", long.MaxValue, DateTimeOffset.UtcNow, "", true);
+        var json = JsonSerializer.Serialize(removed);
+        Assert.DoesNotContain("IsPermanentTombstone", json);
+        var restored = JsonSerializer.Deserialize<ChangeRecord>(json)!;
         Assert.Equal(removed, restored);
-        var edit = Change("shopping", id, "b", 100, removed.Timestamp.AddDays(1), "{}");
+        var edit = Change("shopping", id, "b", long.MaxValue - 1, removed.Timestamp.AddDays(1), "{}");
         foreach (var records in new[] { new[] { restored, edit }, new[] { edit, restored } })
         {
             var engine = new ChangeLogEngine(); engine.Merge(records);
             Assert.Equal(removed, engine.GetCurrent("shopping", id));
             Assert.Empty(engine.Current());
         }
-        Assert.Throws<ArgumentException>(() => new ChangeRecord(Guid.NewGuid(), "a", "shopping", id,
-            1, DateTimeOffset.UtcNow, false, "{}", isPermanentTombstone: true));
-    }
-
-    [Fact]
-    public void Older_serialized_changes_keep_normal_version_ordering()
-    {
-        var id = Guid.NewGuid();
-        var original = Change("shopping", id, "a", 1, DateTimeOffset.UtcNow, "{}");
-        var oldJson = JsonSerializer.Serialize(original).Replace(",\"IsPermanentTombstone\":false", "");
-        var restored = JsonSerializer.Deserialize<ChangeRecord>(oldJson)!;
-        Assert.False(restored.IsPermanentTombstone);
-        var deletion = Change("shopping", id, "a", 2, original.Timestamp, "", true);
-        var edit = Change("shopping", id, "b", 3, original.Timestamp, "{}");
-        var engine = new ChangeLogEngine(); engine.Merge([restored, deletion, edit]);
-        Assert.Equal(edit, Assert.Single(engine.Current()));
     }
 
     private static ChangeRecord Change(
