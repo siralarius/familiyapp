@@ -22,7 +22,11 @@
 		{
 			<a class="settings-row settings-link" href="/devices"><div><strong>Family devices</strong><span>Pair a phone for encrypted sync</span></div><span>→</span></a>
 		}
-		<a class="settings-row settings-link" href="/inventory"><div><strong>Inventory</strong><span>Track household essentials</span></div><span>→</span></a>
+		@if (Services.GetService(typeof(FamilyApp.Core.Planning.PlanningImportService)) is not null)
+        {
+            <a class="settings-row settings-link" href="/planning-import"><div><strong>Plan with ChatGPT</strong><span>Review meals and purchases before saving</span></div><span>→</span></a>
+        }
+        <a class="settings-row settings-link" href="/inventory"><div><strong>Inventory</strong><span>Track household essentials</span></div><span>→</span></a>
 	</div>
 </div>
 

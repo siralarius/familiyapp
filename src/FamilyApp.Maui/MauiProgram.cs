@@ -2,6 +2,7 @@ using FamilyApp.Core.Calendar;
 using FamilyApp.Core.Inventory;
 using FamilyApp.Core.Meals;
 using FamilyApp.Core.Shopping;
+using FamilyApp.Core.Planning;
 using FamilyApp.Data;
 using FamilyApp.Maui.Platforms.iOS;
 using FamilyApp.Sync.ChangeLog;
@@ -33,6 +34,8 @@ public static class MauiProgram
         builder.Services.AddSingleton<IMealPlanRepository>(sp => sp.GetRequiredService<LocalFamilyRepositories>());
         builder.Services.AddSingleton<IFamilyEventRepository>(sp => sp.GetRequiredService<LocalFamilyRepositories>());
         builder.Services.AddSingleton<ShoppingListService>();
+        builder.Services.AddSingleton<IPlanningImportStore>(sp => new LocalPlanningImportStore(sp.GetRequiredService<ChangeLogEngine>(), parsedId.ToString("N")));
+        builder.Services.AddSingleton<PlanningImportService>();
         builder.Services.AddSingleton<InventoryService>();
         builder.Services.AddSingleton<MealPlanService>();
         builder.Services.AddSingleton<FamilyCalendarService>();
