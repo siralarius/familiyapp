@@ -83,6 +83,34 @@ public sealed class PlanningImportTests : IDisposable
         Assert.Empty(await ((IShoppingRepository)repositories).GetAllAsync()); Assert.Single(engine.Changes);
     }
     [Fact]
+    public async Task OfflinePeerImportPreservesExistingMealAndExposesBothChoicesForResolution()
+    {
+        var first = Open(); var second = new ChangeLogEngine();
+        IMealPlanRepository repository = new LocalFamilyRepositories(first, "a");
+        await repository.GetAllAsync();
+        var existing = MealPlanEntry.Create(new(2026, 10, 13), MealType.Dinner, "Keep our dinner");
+        await repository.SaveAsync([existing]);
+        var plan = Plan();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new LocalPlanningImportStore(first, "a").SaveAsync(plan));
+        await new LocalPlanningImportStore(second, "b").SaveAsync(plan);
+        first.Merge(second.Changes); second.Merge(first.Changes);
+        foreach (var engine in new[] { first, second, Open() })
+        {
+            IMealPlanRepository meals = new LocalFamilyRepositories(engine, "check");
+            var choices = await meals.GetAllAsync();
+            Assert.Equal(2, choices.Count);
+            Assert.Contains(existing, choices);
+            Assert.Contains(plan.Meals[0], choices);
+            Assert.Equal(2, Assert.Single(choices.GroupBy(x => (x.Date, x.MealType))).Count());
+            Assert.True((await new LocalPlanningImportStore(engine, "check").SaveAsync(plan)).AlreadyImported);
+        }
+        // Explicitly choosing the existing meal publishes the ordinary synced deletion.
+        await repository.GetAllAsync(); await repository.SaveAsync([existing]);
+        second.Merge(first.Changes);
+        IMealPlanRepository peer = new LocalFamilyRepositories(second, "b");
+        Assert.Equal(existing, Assert.Single(await peer.GetAllAsync()));
+    }
+    [Fact]
     public async Task ExistingPurchaseQuantityIsPreservedAndFailedStoragePublishesNothing()
     {
         var engine = Open(); IShoppingRepository repository = new LocalFamilyRepositories(engine, "a");

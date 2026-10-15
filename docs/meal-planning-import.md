@@ -28,6 +28,10 @@ Slots are `Breakfast`, `Lunch`, `Dinner`. `agreed:false` meals and `source:infer
 purchases start unselected. Inferred ingredients require the user's explicit selection.
 Resolve every question, edit dates/dishes/quantities together, then confirm the selected
 entries. A conflicting existing meal prevents the entire save; it is never overwritten.
+If another family device accepts a draft offline before learning about an existing
+meal, sync preserves both confirmed meals. The Meals page labels date/slot conflicts
+for review; edit or delete an alternative there to publish that explicit decision.
+A failed local import does not delete a meal accepted on another device.
 Existing open purchases are skipped case-insensitively without changing quantities.
 A skip also records a terminal tombstone at the reserved maximum revision for that
 never-reusable import entry ID, using the existing protocol-1 version ordering. Older
