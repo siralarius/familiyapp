@@ -1,0 +1,7 @@
+.planning-field, .planning-entry label { display: grid; gap: .4rem; margin: .75rem 0; }
+.planning-field textarea, .planning-field input, .planning-entry input:not([type=checkbox]), .planning-entry select { width: 100%; padding: .7rem; border: 1px solid #b8c2bb; border-radius: .5rem; color: #263c30; background: white; font: inherit; box-sizing: border-box; }
+.planning-entry { padding: 1rem; margin: 1rem 0; border: 1px solid #d7ded8; border-radius: .8rem; }
+.planning-entry label:has(input[type=checkbox]) { display: block; }
+.planning-question { display: flex; align-items: center; gap: 1rem; margin: .8rem 0; }
+.planning-guide { margin-bottom: 1rem; line-height: 1.6; }
+.planning-prompt { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .85rem; }

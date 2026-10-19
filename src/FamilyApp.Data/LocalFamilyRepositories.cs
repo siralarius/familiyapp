@@ -45,11 +45,13 @@ public sealed class LocalFamilyRepositories(ChangeLogEngine engine, string devic
             {
                 var records = current.Where(x => x.EntityType == type).ToDictionary(x => x.EntityId);
                 var changes = new List<ChangeRecord>();
+                bool IsTerminal(Guid id) => records.TryGetValue(id, out var record) &&
+                    record.IsTombstone && record.Version == long.MaxValue;
                 foreach (var (id, payload) in desired)
-                    if (!baseline.TryGetValue(id, out var old) || old != payload)
+                    if (!IsTerminal(id) && (!baseline.TryGetValue(id, out var old) || old != payload))
                         changes.Add(Create(id, payload, false));
                 foreach (var id in baseline.Keys.Except(desired.Keys))
-                    changes.Add(Create(id, "", true));
+                    if (!IsTerminal(id)) changes.Add(Create(id, "", true));
                 return changes;
 
                 ChangeRecord Create(Guid id, string payload, bool deleted) => new(

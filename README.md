@@ -130,3 +130,5 @@ Implementation work should be delivered in small reviewable pull requests so eac
 - The browser preview persists only the nonsecret last-sync timestamp in local storage. The iPhone host registers Keychain pairing, Bonjour discovery/listening, encrypted transport and persisted sync status.
 - The MAUI iPhone host has a separate macOS CI build and uses SQLite-backed entity changes. See [native setup and acceptance instructions](src/FamilyApp.Maui/README.md) for the Xcode-compatible workload, simulator builds, personal-device signing and pairing. Physical two-iPhone acceptance remains required.
 - Browser and automated checks do not replace the two-iPhone acceptance checks required for native pairing, discovery and local transport.
+
+Meal-planning export/import: [guide and remaining acceptance](docs/meal-planning-import.md).
