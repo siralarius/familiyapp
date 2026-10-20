@@ -8,6 +8,31 @@ namespace FamilyApp.Sync.Tests;
 public class PairingCoordinatorTests
 {
     [Fact]
+    public async Task Accepted_response_recovers_after_expiry_but_unaccepted_response_still_expires()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var time = new MutableTimeProvider(DateTimeOffset.UtcNow);
+        var family = Guid.NewGuid();
+        var host = new FamilyDeviceIdentity(family, Guid.NewGuid(), "Host");
+        var guest = new FamilyDeviceIdentity(family, Guid.NewGuid(), "Guest");
+        var store = new FakeSecurePairingStore();
+        var pairing = new PairingCoordinator(store, new EcdhPairingKeyAgreement(), time);
+        var guestPairing = new PairingCoordinator(new FakeSecurePairingStore(), new EcdhPairingKeyAgreement(), time);
+        var response = await guestPairing.AcceptOfferAsync(guest, await pairing.CreateOfferAsync(host, token), token);
+        var unaccepted = await guestPairing.AcceptOfferAsync(guest, await pairing.CreateOfferAsync(host, token), token);
+        await pairing.CompletePairingAsync(host, response, token);
+        var secret = await pairing.ReadTrustedSecretAsync(host, guest.DeviceId, token);
+        time.Advance(TimeSpan.FromMinutes(6));
+        var restarted = new PairingCoordinator(store, new EcdhPairingKeyAgreement(), time);
+
+        await restarted.CompletePairingAsync(host, response, token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => restarted.CompletePairingAsync(host, unaccepted, token));
+        Assert.Equal(secret, await restarted.ReadTrustedSecretAsync(host, guest.DeviceId, token));
+        await restarted.ForgetTrustedDeviceAsync(host, guest.DeviceId, token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => restarted.CompletePairingAsync(host, response, token));
+    }
+
+    [Fact]
     public async Task Only_the_exact_accepted_response_can_resume_pairing_and_forgetting_revokes_it()
     {
         var token = TestContext.Current.CancellationToken;

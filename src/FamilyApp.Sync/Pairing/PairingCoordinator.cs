@@ -217,7 +217,7 @@ public sealed class PairingCoordinator
     {
         ArgumentNullException.ThrowIfNull(identity);
         var response = Decode<ResponsePayload>(responseQr);
-        ValidateResponse(identity, response);
+        ValidateResponseIdentity(identity, response);
 
         var offerNonce = DecodeBytes(response.OfferNonce, 32);
         var receiptKey = TrustedKey(identity.FamilyId, response.DeviceId) + ":response";
@@ -232,6 +232,8 @@ public sealed class PairingCoordinator
                 return;
             }
         }
+        // Expiry gates establishing trust, not resuming an already authenticated exchange.
+        ValidateVersionAndExpiry(response.Version, response.ExpiresAtUtc);
         var privateKey = await _secureStore.ReadAsync(PendingKey(identity, offerNonce), cancellationToken)
             ?? throw new InvalidOperationException("The pairing offer is no longer available.");
         byte[]? sharedKey = null;
@@ -295,11 +297,11 @@ public sealed class PairingCoordinator
         _ = DecodeBytes(offer.Nonce, 32);
     }
 
-    private void ValidateResponse(FamilyDeviceIdentity identity, ResponsePayload response)
+    private static void ValidateResponseIdentity(FamilyDeviceIdentity identity, ResponsePayload response)
     {
-        ValidateVersionAndExpiry(response.Version, response.ExpiresAtUtc);
+        if (response.Version != ProtocolVersion) throw new InvalidOperationException("The pairing protocol version is unsupported.");
         if (response.FamilyId != identity.FamilyId || response.InitiatorDeviceId != identity.DeviceId ||
-            response.DeviceId == identity.DeviceId || string.IsNullOrWhiteSpace(response.DisplayName))
+            response.DeviceId == Guid.Empty || response.DeviceId == identity.DeviceId || string.IsNullOrWhiteSpace(response.DisplayName))
             throw new InvalidOperationException("The pairing response is not valid for this device.");
     }
 
