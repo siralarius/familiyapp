@@ -23,7 +23,8 @@ public enum PeerSyncState
 {
     Rejected,
     Synchronized,
-    Retrying
+    Retrying,
+    Unpaired
 }
 
 public sealed record PeerSyncStatus(

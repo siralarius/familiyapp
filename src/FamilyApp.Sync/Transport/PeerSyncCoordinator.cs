@@ -82,7 +82,7 @@ public sealed class PeerSyncCoordinator
                 var trustedSecret = await _pairing.ReadTrustedSecretAsync(_identity, peerDeviceId, cancellationToken);
                 if (trustedSecret is null)
                 {
-                    await ReportAsync(peerDeviceId, PeerSyncState.Rejected, "Peer is not paired.", cancellationToken);
+                    await ReportAsync(peerDeviceId, PeerSyncState.Unpaired, "Peer is not paired.", cancellationToken);
                     return;
                 }
 
@@ -198,7 +198,7 @@ public sealed class PeerSyncCoordinator
         var trustedSecret = await _pairing.ReadTrustedSecretAsync(_identity, peerDeviceId.Value, cancellationToken);
         if (trustedSecret is null)
         {
-            await ReportAsync(peerDeviceId.Value, PeerSyncState.Rejected, "Peer is not paired.", cancellationToken);
+            await ReportAsync(peerDeviceId.Value, PeerSyncState.Unpaired, "Peer is not paired.", cancellationToken);
             return;
         }
 

@@ -248,7 +248,7 @@ public class PeerSyncCoordinatorTests
         await coordinator.SynchronizePeerAsync(Endpoint(unpairedDeviceId), cancellationToken);
 
         Assert.Equal(0, transport.ConnectCount);
-        Assert.Equal(PeerSyncState.Rejected, reportedStatus?.State);
+        Assert.Equal(PeerSyncState.Unpaired, reportedStatus?.State);
         Assert.Equal(unpairedDeviceId, reportedStatus?.PeerDeviceId);
     }
 
