@@ -16,6 +16,7 @@ public sealed class PeerSyncStatusService
     private readonly SemaphoreSlim _initializeLock = new(1, 1);
     private bool _initialized;
     private readonly ConcurrentDictionary<Guid, PeerSyncStatus> _peerStatuses = new();
+    private PeerSyncStatus? _globalStatus;
 
     public PeerSyncStatusService(IPeerSyncStatusStore store)
         => _store = store ?? throw new ArgumentNullException(nameof(store));
@@ -30,13 +31,13 @@ public sealed class PeerSyncStatusService
         get
         {
             var states = _peerStatuses.Values.Select(status => status.State).ToList();
-            if (LatestStatus is { PeerDeviceId: var peerId, State: var latestState } && peerId == Guid.Empty && latestState != PeerSyncState.Unpaired)
-                states.Add(latestState);
+            if (Volatile.Read(ref _globalStatus) is { } globalStatus)
+                states.Add(globalStatus.State);
             if (states.Contains(PeerSyncState.Synchronized))
                 return states.Any(state => state != PeerSyncState.Synchronized)
                     ? PeerSyncOverviewState.PartiallySynchronized : PeerSyncOverviewState.Synchronized;
             if (states.Contains(PeerSyncState.Retrying)) return PeerSyncOverviewState.Retrying;
-            return states.Contains(PeerSyncState.Rejected) || states.Contains(PeerSyncState.Unpaired) || LatestStatus?.State == PeerSyncState.Unpaired
+            return states.Contains(PeerSyncState.Rejected) || states.Contains(PeerSyncState.Unpaired)
                 ? PeerSyncOverviewState.PairingRequired : PeerSyncOverviewState.Waiting;
         }
     }
@@ -78,8 +79,13 @@ public sealed class PeerSyncStatusService
         if (status.PeerDeviceId != Guid.Empty &&
             (status.State != PeerSyncState.Unpaired || _peerStatuses.ContainsKey(status.PeerDeviceId)))
             _peerStatuses[status.PeerDeviceId] = status;
+        if (status.PeerDeviceId == Guid.Empty && status.State != PeerSyncState.Unpaired)
+            Volatile.Write(ref _globalStatus, status);
         if (status.State == PeerSyncState.Synchronized)
         {
+            var globalStatus = Volatile.Read(ref _globalStatus);
+            if (globalStatus is not null && globalStatus.TimestampUtc <= status.TimestampUtc)
+                Interlocked.CompareExchange(ref _globalStatus, null, globalStatus);
             LastSuccessfulSyncAtUtc = status.TimestampUtc;
             PersistenceWarning = null;
             try

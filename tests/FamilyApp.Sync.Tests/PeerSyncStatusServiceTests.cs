@@ -58,14 +58,14 @@ public class PeerSyncStatusServiceTests
     }
 
     [Fact]
-    public async Task Missing_trust_is_actionable_without_other_paired_connections()
+    public async Task Unknown_discoveries_wait_but_lost_trust_for_a_known_peer_requires_pairing()
     {
         var token = TestContext.Current.CancellationToken;
         var service = new PeerSyncStatusService(new InMemoryStatusStore());
         var peer = Guid.NewGuid(); var now = DateTimeOffset.UtcNow;
         Assert.Equal(PeerSyncOverviewState.Waiting, service.OverviewState);
         await service.RecordAsync(new PeerSyncStatus(peer, PeerSyncState.Unpaired, null, now), token);
-        Assert.Equal(PeerSyncOverviewState.PairingRequired, service.OverviewState);
+        Assert.Equal(PeerSyncOverviewState.Waiting, service.OverviewState);
         await service.RecordAsync(new PeerSyncStatus(peer, PeerSyncState.Synchronized, null, now.AddSeconds(1)), token);
         await service.RecordAsync(new PeerSyncStatus(peer, PeerSyncState.Unpaired, null, now.AddSeconds(2)), token);
         Assert.Equal(PeerSyncOverviewState.PairingRequired, service.OverviewState);
@@ -80,7 +80,9 @@ public class PeerSyncStatusServiceTests
         await service.RecordAsync(new PeerSyncStatus(peer, PeerSyncState.Synchronized, null, now), token);
         await service.RecordAsync(new PeerSyncStatus(Guid.Empty, PeerSyncState.Retrying, "Listener restarting", now.AddSeconds(1)), token);
         Assert.Equal(PeerSyncOverviewState.PartiallySynchronized, service.OverviewState);
-        await service.RecordAsync(new PeerSyncStatus(peer, PeerSyncState.Synchronized, null, now.AddSeconds(2)), token);
+        await service.RecordAsync(new PeerSyncStatus(Guid.NewGuid(), PeerSyncState.Unpaired, null, now.AddSeconds(2)), token);
+        Assert.Equal(PeerSyncOverviewState.PartiallySynchronized, service.OverviewState);
+        await service.RecordAsync(new PeerSyncStatus(peer, PeerSyncState.Synchronized, null, now.AddSeconds(3)), token);
         Assert.Equal(PeerSyncOverviewState.Synchronized, service.OverviewState);
     }
 
