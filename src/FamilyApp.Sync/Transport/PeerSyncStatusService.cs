@@ -61,8 +61,6 @@ public sealed class PeerSyncStatusService
                 {
                     if (peer == Guid.Empty) continue;
                     _knownPeers.Add(peer);
-                    _peerStatuses.TryAdd(peer, new PeerSyncStatus(peer, PeerSyncState.Retrying,
-                        "Waiting for a known device.", DateTimeOffset.MinValue));
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -93,7 +91,7 @@ public sealed class PeerSyncStatusService
             // Discovery of an unrelated device is not a failure of an existing paired connection.
             // Keep LatestStatus as the individual event for invitation completion subscribers.
             if (status.PeerDeviceId != Guid.Empty &&
-                (status.State != PeerSyncState.Unpaired || _peerStatuses.ContainsKey(status.PeerDeviceId)))
+                (status.State != PeerSyncState.Unpaired || _knownPeers.Contains(status.PeerDeviceId)))
                 _peerStatuses[status.PeerDeviceId] = status;
             if (status.PeerDeviceId == Guid.Empty && status.State != PeerSyncState.Unpaired)
                 Volatile.Write(ref _globalStatus, status);

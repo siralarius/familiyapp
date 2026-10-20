@@ -6,6 +6,24 @@ namespace FamilyApp.Sync.Tests;
 public class PeerSyncStatusServiceTests
 {
     [Fact]
+    public async Task Restored_known_peers_have_no_live_health_until_an_actual_event_occurs()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var store = new InMemoryStatusStore();
+        var first = Guid.NewGuid(); var offline = Guid.NewGuid(); var now = DateTimeOffset.UtcNow;
+        var original = new PeerSyncStatusService(store);
+        await original.RecordAsync(new PeerSyncStatus(first, PeerSyncState.Synchronized, null, now), token);
+        await original.RecordAsync(new PeerSyncStatus(offline, PeerSyncState.Synchronized, null, now), token);
+        var restarted = new PeerSyncStatusService(store);
+        await restarted.InitializeAsync(token);
+        Assert.Equal(PeerSyncOverviewState.Waiting, restarted.OverviewState);
+        await restarted.RecordAsync(new PeerSyncStatus(first, PeerSyncState.Synchronized, null, now.AddSeconds(1)), token);
+        Assert.Equal(PeerSyncOverviewState.Synchronized, restarted.OverviewState);
+        await restarted.RecordAsync(new PeerSyncStatus(offline, PeerSyncState.Unpaired, null, now.AddSeconds(2)), token);
+        Assert.Equal(PeerSyncOverviewState.PartiallySynchronized, restarted.OverviewState);
+    }
+
+    [Fact]
     public async Task Known_peer_with_lost_trust_is_recognized_after_restart_before_any_ui_initialization()
     {
         var token = TestContext.Current.CancellationToken;
