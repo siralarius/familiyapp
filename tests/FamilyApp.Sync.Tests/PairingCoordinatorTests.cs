@@ -8,6 +8,31 @@ namespace FamilyApp.Sync.Tests;
 public class PairingCoordinatorTests
 {
     [Fact]
+    public async Task Only_the_exact_accepted_response_can_resume_pairing_and_forgetting_revokes_it()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var family = Guid.NewGuid();
+        var host = new FamilyDeviceIdentity(family, Guid.NewGuid(), "Host");
+        var guest = new FamilyDeviceIdentity(family, Guid.NewGuid(), "Guest");
+        var store = new FakeSecurePairingStore();
+        var pairing = new PairingCoordinator(store, new EcdhPairingKeyAgreement());
+        var guestPairing = new PairingCoordinator(new FakeSecurePairingStore(), new EcdhPairingKeyAgreement());
+        var offer = await pairing.CreateOfferAsync(host, token);
+        var response = await guestPairing.AcceptOfferAsync(guest, offer, token);
+        var otherResponse = await guestPairing.AcceptOfferAsync(guest, offer, token);
+        await pairing.CompletePairingAsync(host, response, token);
+        var secret = await pairing.ReadTrustedSecretAsync(host, guest.DeviceId, token);
+        var restarted = new PairingCoordinator(store, new EcdhPairingKeyAgreement());
+
+        await restarted.CompletePairingAsync(host, response, token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => restarted.CompletePairingAsync(host, otherResponse, token));
+        Assert.Equal(secret, await restarted.ReadTrustedSecretAsync(host, guest.DeviceId, token));
+        await restarted.ForgetTrustedDeviceAsync(host, guest.DeviceId, token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => restarted.CompletePairingAsync(host, response, token));
+        Assert.Null(await restarted.ReadTrustedSecretAsync(host, guest.DeviceId, token));
+    }
+
+    [Fact]
     public async Task Devices_pair_using_qr_payloads_and_store_shared_secret_only_in_secure_store()
     {
         var familyId = Guid.NewGuid();

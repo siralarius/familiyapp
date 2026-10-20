@@ -14,6 +14,43 @@ namespace FamilyApp.Sync.Tests;
 public class PeerSyncCoordinatorTests
 {
     [Fact]
+    public async Task Lost_final_confirmation_reconnects_without_a_new_offer_and_converges_after_host_restart()
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(5));
+        var token = timeout.Token;
+        var family = Guid.NewGuid();
+        var host = Identity(family); var guest = Identity(family);
+        var hostStore = new FakeSecurePairingStore();
+        var hostPairing = Pairing(hostStore); var guestPairing = Pairing(new FakeSecurePairingStore());
+        var response = await guestPairing.AcceptOfferAsync(guest, await hostPairing.CreateOfferAsync(host, token), token);
+        var hostLog = new ChangeLogEngine(); var guestLog = new ChangeLogEngine();
+        hostLog.Apply(Change(host.DeviceId, "Host")); guestLog.Apply(Change(guest.DeviceId, "Guest"));
+        var hostStatuses = new List<PeerSyncStatus>();
+        var transport = new ReconnectingPairingTransport(connection =>
+        {
+            // Recreate the coordinator and pairing service; only persisted secure state survives.
+            var sync = Coordinator(host, Pairing(hostStore), hostLog, new FakePeerTransport(null));
+            sync.StatusChanged += hostStatuses.Add;
+            return sync.HandleIncomingPeerAsync(connection, token);
+        });
+        var guestSync = Coordinator(guest, guestPairing, guestLog, transport);
+        PeerSyncStatus? guestStatus = null;
+        guestSync.StatusChanged += status => guestStatus = status;
+
+        await guestSync.PairAndSynchronizePeerAsync(Endpoint(host.DeviceId), response, token);
+        await Task.WhenAll(transport.HostTasks);
+
+        Assert.Equal(2, transport.ConnectCount);
+        Assert.True(guestStatus?.PairingCompleted);
+        Assert.Equal(PeerSyncState.Synchronized, guestStatus?.State);
+        Assert.All(hostStatuses, status => Assert.True(status.PairingCompleted));
+        Assert.Equal(2, hostStatuses.Count);
+        Assert.Equal(2, hostLog.Changes.Count);
+        Assert.Equal(hostLog.Changes, guestLog.Changes);
+    }
+
+    [Fact]
     public async Task Pairing_response_over_transport_establishes_mutual_trust_and_syncs_both_devices()
     {
         var token = TestContext.Current.CancellationToken;
@@ -416,6 +453,41 @@ public class PeerSyncCoordinatorTests
 
         public async Task<ReadOnlyMemory<byte>> ReceiveAsync(CancellationToken cancellationToken = default)
             => await incoming.ReadAsync(cancellationToken);
+    }
+
+    private sealed class ReconnectingPairingTransport(Func<IPeerConnection, Task> handle) : IPeerTransport
+    {
+        public int ConnectCount { get; private set; }
+        public List<Task> HostTasks { get; } = [];
+        public Task<IPeerConnection> ConnectAsync(PeerServiceEndpoint peer, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var (host, guest) = InMemoryPeerConnection.CreatePair();
+            HostTasks.Add(handle(++ConnectCount == 1 ? new DroppedConfirmationConnection(host) : host));
+            return Task.FromResult<IPeerConnection>(new ClosedConnectionAsIOException(guest));
+        }
+    }
+
+    private sealed class DroppedConfirmationConnection(IPeerConnection inner) : IPeerConnection
+    {
+        private int sends;
+        public ValueTask DisposeAsync() => inner.DisposeAsync();
+        public Task SendAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default)
+            => ++sends == 2 ? Task.CompletedTask : inner.SendAsync(message, cancellationToken);
+        public Task<ReadOnlyMemory<byte>> ReceiveAsync(CancellationToken cancellationToken = default)
+            => inner.ReceiveAsync(cancellationToken);
+    }
+
+    private sealed class ClosedConnectionAsIOException(IPeerConnection inner) : IPeerConnection
+    {
+        public ValueTask DisposeAsync() => inner.DisposeAsync();
+        public Task SendAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default)
+            => inner.SendAsync(message, cancellationToken);
+        public async Task<ReadOnlyMemory<byte>> ReceiveAsync(CancellationToken cancellationToken = default)
+        {
+            try { return await inner.ReceiveAsync(cancellationToken); }
+            catch (ChannelClosedException exception) { throw new IOException("Connection closed.", exception); }
+        }
     }
 
     private sealed class FaultedPairingConnection(IPeerConnection inner, string fault) : IPeerConnection

@@ -220,6 +220,18 @@ public sealed class PairingCoordinator
         ValidateResponse(identity, response);
 
         var offerNonce = DecodeBytes(response.OfferNonce, 32);
+        var receiptKey = TrustedKey(identity.FamilyId, response.DeviceId) + ":response";
+        var responseHash = SHA256.HashData(Encoding.UTF8.GetBytes(responseQr));
+        var acceptedHash = await _secureStore.ReadAsync(receiptKey, cancellationToken);
+        if (acceptedHash is not null && CryptographicOperations.FixedTimeEquals(acceptedHash, responseHash))
+        {
+            var trusted = await ReadTrustedSecretAsync(identity, response.DeviceId, cancellationToken);
+            if (trusted is not null)
+            {
+                CryptographicOperations.ZeroMemory(trusted);
+                return;
+            }
+        }
         var privateKey = await _secureStore.ReadAsync(PendingKey(identity, offerNonce), cancellationToken)
             ?? throw new InvalidOperationException("The pairing offer is no longer available.");
         byte[]? sharedKey = null;
@@ -240,6 +252,9 @@ public sealed class PairingCoordinator
                 throw new InvalidOperationException("The pairing response could not be authenticated.");
 
             await _secureStore.WriteAsync(TrustedKey(identity.FamilyId, response.DeviceId), sharedKey, cancellationToken);
+            // Only an already authenticated, byte-identical response may resume a lost exchange.
+            // Persist before consuming the offer so retries also survive process restart.
+            await _secureStore.WriteAsync(receiptKey, responseHash, cancellationToken);
             await _secureStore.DeleteAsync(PendingKey(identity, offerNonce), cancellationToken);
         }
         finally
@@ -259,14 +274,16 @@ public sealed class PairingCoordinator
         return _secureStore.ReadAsync(TrustedKey(identity.FamilyId, peerDeviceId), cancellationToken);
     }
 
-    public Task ForgetTrustedDeviceAsync(
+    public async Task ForgetTrustedDeviceAsync(
         FamilyDeviceIdentity identity,
         Guid peerDeviceId,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(identity);
         if (peerDeviceId == Guid.Empty) throw new ArgumentException("Peer device ID is required.", nameof(peerDeviceId));
-        return _secureStore.DeleteAsync(TrustedKey(identity.FamilyId, peerDeviceId), cancellationToken);
+        var key = TrustedKey(identity.FamilyId, peerDeviceId);
+        await _secureStore.DeleteAsync(key, cancellationToken);
+        await _secureStore.DeleteAsync(key + ":response", cancellationToken);
     }
 
     private void ValidateOffer(FamilyDeviceIdentity identity, OfferPayload offer)

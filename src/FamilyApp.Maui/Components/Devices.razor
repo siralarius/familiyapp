@@ -43,10 +43,7 @@
     }
     <h2>Join a family</h2>
     <p>Scan the other device's offer to join that family. No response QR code is needed.</p>
-    @if (!waitingForJoin)
-    {
-        <p role="status">@message</p>
-    }
+    <p role="status">@message</p>
     <button class="primary-button" disabled="@busy" @onclick="ScanOfferQr">Scan QR and join</button>
 
     <details>

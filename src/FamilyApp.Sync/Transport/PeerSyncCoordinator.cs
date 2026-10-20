@@ -142,10 +142,26 @@ public sealed class PeerSyncCoordinator
             ?? throw new InvalidOperationException("Scan a new pairing offer to join this device.");
         try
         {
-            await using var connection = await _transport.ConnectAsync(peer, cancellationToken);
-            await connection.SendAsync(message, cancellationToken);
-            await new EncryptedPeerSyncSession().ExchangeAsync(connection, _changeLog,
-                _identity.FamilyId, _identity.DeviceId, peerDeviceId.Value, secret, cancellationToken, confirmPairing: true);
+            for (var attempt = 0; ; attempt++)
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeout.CancelAfter(TimeSpan.FromSeconds(12));
+                try
+                {
+                    await using var connection = await _transport.ConnectAsync(peer, timeout.Token);
+                    await connection.SendAsync(message, timeout.Token);
+                    await new EncryptedPeerSyncSession().ExchangeAsync(connection, _changeLog,
+                        _identity.FamilyId, _identity.DeviceId, peerDeviceId.Value, secret, timeout.Token, confirmPairing: true);
+                    break;
+                }
+                catch (Exception exception) when (attempt == 0 && !cancellationToken.IsCancellationRequested &&
+                    (exception is IOException or TimeoutException ||
+                     exception is OperationCanceledException && timeout.IsCancellationRequested))
+                {
+                    // Reconnect with the same proof; the host recognizes its accepted response.
+                    // Neither side announces completion until the fresh encrypted exchange finishes.
+                }
+            }
             await ReportAsync(peerDeviceId.Value, PeerSyncState.Synchronized,
                 cancellationToken: cancellationToken, pairingCompleted: true);
         }
