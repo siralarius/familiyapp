@@ -45,8 +45,13 @@ an active run for an immediate stop. Publication rechecks eligibility and head.
   controller. Review findings are polled by the schedule: review events are deliberately
   excluded because their workflow context can be PR code.
 - Current-head failed runs of CI, .NET CI, Automation tests or iOS; failed Netlify
-  preview; current P0–P2 inline findings; and current changes-requested reviews are
+  preview; active P0–P2 inline findings; and outstanding changes-requested reviews are
   actionable. Pending checks, optional suggestions and outdated findings alone are not.
+  Active threads remain actionable after unrelated pushes even when their original
+  comment SHA differs from the head. A reviewer's latest approval/dismissal supersedes
+  earlier change requests; a subsequent comment alone does not clear them.
+  Copilot's observed `Changes recommended` review format routes its active inline
+  findings without requiring a Codex-style P badge. Unknown provider formats stay manual.
 - Preparation reads actual failed-job logs and authenticated Netlify historical deploy
   logs. Missing, mismatched, oversized or inaccessible evidence blocks dispatch and
   posts a blocked comment. Passing .NET CI does not explain a failed Netlify build.
@@ -81,7 +86,8 @@ Observed on 11 October 2026 at head `50bb98fceb3195747217921df25f1a322b945623`:
 - Codex P2 inline finding `4242558373` asks for refreshing the mounted home header
   across noon, 17:00 and midnight. Copilot approval does not clear this finding.
 - Issue #39 requires local weekdays/greetings, time-boundary refresh and successful
-  preview. It remains open; this infrastructure PR does not fix those acceptance criteria.
+  preview. It was open at this snapshot; the owner subsequently closed it after the
+  separate PR #40 fix. That closure is not an end-to-end test of this remediation workflow.
 
 Controller tests reproduce these observations and exercise routing, stale/optional
 findings, missing logs, forged receipts, stale-head publication, patch restrictions

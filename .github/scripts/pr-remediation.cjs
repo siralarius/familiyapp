@@ -11,14 +11,41 @@ function eligible(pr, repository) {
 }
 function receipts(comments) {
   return comments.filter(x => x.user?.login === 'github-actions[bot]' && x.user.type === 'Bot')
-    .flatMap(x => { try { return [JSON.parse(x.body.match(/^<!-- familyapp-remediation:(.*?) -->/s)?.[1])]; } catch { return []; } });
+    .flatMap(x => {
+      try {
+        const record = JSON.parse(x.body.match(/^<!-- familyapp-remediation:(.*?) -->/s)?.[1]);
+        if (!record || typeof record !== 'object' || Array.isArray(record) ||
+            !['attempt', 'published', 'verified', 'blocked', 'exhausted'].includes(record.kind)) return [];
+        if (record.kind !== 'exhausted' && !/^[a-f0-9]{40}$/.test(record.sha || '')) return [];
+        if (record.threads !== undefined && (!Array.isArray(record.threads) || record.threads.length > 100 || record.threads.some(id => typeof id !== 'string'))) return [];
+        return [record];
+      } catch { return []; }
+    });
+}
+function decisiveReviews(reviews) {
+  const latest = new Map();
+  for (const review of [...reviews].sort((a, b) => a.id - b.id)) {
+    if (['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'].includes(review.state)) latest.set(review.user?.id ?? `unknown:${review.id}`, review);
+  }
+  return [...latest.values()];
 }
 function reason(snapshot) {
   const failed = snapshot.runs.filter(x => WORKFLOWS.has(x.name) && x.status === 'completed' && FAILURE.has(x.conclusion));
   const preview = snapshot.statuses.find(x => x.context === PREVIEW_CONTEXT && ['failure', 'error'].includes(x.state));
-  const findings = snapshot.threads.filter(x => !x.isResolved && !x.isOutdated && x.comments.nodes.some(c =>
-    c.commit?.oid === snapshot.sha && (/\bP[0-2]\b/.test(c.body) || c.pullRequestReview?.state === 'CHANGES_REQUESTED')));
-  const reviews = snapshot.reviews.filter(x => x.commit_id === snapshot.sha && x.state === 'CHANGES_REQUESTED');
+  const copilot = snapshot.reviews.filter(x => x.user?.id === 175728472 && x.state !== 'DISMISSED' && x.body?.startsWith('<!-- ccr-overview-v2 -->')).sort((a, b) => b.id - a.id)[0];
+  const recommendedReview = copilot && /### 🟡 Changes recommended/.test(copilot.body) ? copilot.id : undefined;
+  const latestReviews = decisiveReviews(snapshot.reviews);
+  const superseded = comment => {
+    const original = snapshot.reviews.find(r => r.id === comment.pullRequestReview?.databaseId);
+    if (original?.state === 'DISMISSED') return true;
+    if (!original?.user?.id || original.state !== 'CHANGES_REQUESTED') return false;
+    return latestReviews.some(r => r.user?.id === original.user.id && r.id > original.id &&
+      ['APPROVED', 'DISMISSED'].includes(r.state));
+  };
+  const findings = snapshot.threads.filter(x => !x.isResolved && !x.isOutdated && x.comments.nodes.some(c => !superseded(c) && (
+    /\bP[0-2]\b/.test(c.body) || c.pullRequestReview?.state === 'CHANGES_REQUESTED' ||
+    (recommendedReview !== undefined && c.pullRequestReview?.databaseId === recommendedReview))));
+  const reviews = decisiveReviews(snapshot.reviews).filter(x => x.state === 'CHANGES_REQUESTED');
   return { failed, preview, findings, reviews, actionable: !!(failed.length || preview || findings.length || reviews.length) };
 }
 function allowedPath(path) {
@@ -36,22 +63,20 @@ function validateChanges(changes) {
     if (x.content !== null && typeof x.content !== 'string') throw new Error('Invalid file content');
     total += Buffer.byteLength(x.content || '');
     if (total > 500000) throw new Error('Patch exceeds 500 KB');
-    if (/(?:sk-(?:proj-)?[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|-----BEGIN .*PRIVATE KEY-----)/.test(x.content || '')) throw new Error('Possible credential in patch');
+    if (/(?:sk-(?:proj-)?[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|-----BEGIN .*PRIVATE KEY-----)/.test(x.content || '')) throw new Error('Possible credential in patch');
   }
   return changes;
 }
 function redact(value) {
   let text = String(value);
   for (const key of ['NETLIFY_AUTH_TOKEN', 'GITHUB_TOKEN']) if (process.env[key]) text = text.split(process.env[key]).join('[REDACTED]');
-  return text.replace(/(?:sk-(?:proj-)?[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|Bearer\s+\S+)/g, '[REDACTED]');
+  return text.replace(/(?:sk-(?:proj-)?[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|Bearer\s+\S+)/g, '[REDACTED]');
 }
 function verification(state, comments, number) {
   const clean = cleanReview(comments, state.sha);
-  const latest = new Map();
-  for (const review of state.reviews) if (['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'].includes(review.state)) latest.set(review.user.id, review);
   const laterFeedback = clean && comments.some(x => x.user?.id === 199175422 && x.user.login === 'chatgpt-codex-connector[bot]' &&
     x.id > clean.id && !x.body.startsWith('<!-- codex-pull-request-review-summary -->'));
-  return !!clean && !laterFeedback && ![...latest.values()].some(x => x.state === 'CHANGES_REQUESTED') &&
+  return !!clean && !laterFeedback && !decisiveReviews(state.reviews).some(x => x.state === 'CHANGES_REQUESTED') &&
     successfulRuns(state.runs, number, state.sha) && successfulChecks(state.checks, state.statuses) &&
     state.runs.some(x => x.path?.split('@')[0] === '.github/workflows/ios.yml' && x.status === 'completed' && x.conclusion === 'success');
 }
@@ -67,7 +92,7 @@ async function snapshot(github, params, pr) {
   const combined = (await github.rest.repos.getCombinedStatusForRef({ ...params, ref: sha, per_page: 100 })).data;
   if (combined.total_count > 100) throw new Error('Too many statuses: fail closed');
   const reviews = await github.paginate(github.rest.pulls.listReviews, { ...params, pull_number: pr.number, per_page: 100 });
-  const result = await github.graphql(`query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved isOutdated comments(first:100){pageInfo{hasNextPage} nodes{body commit{oid} pullRequestReview{state}}}}}}}}`, { ...params, number: pr.number });
+  const result = await github.graphql(`query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved isOutdated comments(first:100){pageInfo{hasNextPage} nodes{body commit{oid} pullRequestReview{state databaseId}}}}}}}}`, { ...params, number: pr.number });
   const threads = result.repository.pullRequest.reviewThreads;
   if (threads.pageInfo.hasNextPage || threads.nodes.some(x => x.comments.pageInfo.hasNextPage)) throw new Error('Incomplete review data');
   return { sha, runs: [...latest.values()], checks, statuses: combined.statuses, reviews, threads: threads.nodes };
@@ -198,4 +223,4 @@ async function publish({ github, context, core }) {
   core.setOutput('sha', fix.sha);
   core.info(`Published fix ${fix.sha}; verification pending`);
 }
-module.exports = { prepare, publish, eligible, receipts, reason, allowedPath, validateChanges, snapshot, netlifyLog, verification };
+module.exports = { prepare, publish, eligible, receipts, reason, allowedPath, validateChanges, snapshot, netlifyLog, verification, redact };

@@ -1,0 +1,108 @@
+@page "/planning-import"
+@using FamilyApp.Core.Planning
+@using FamilyApp.Core.Meals
+@inject IServiceProvider Services
+@inject IJSRuntime JS
+<PageTitle>Plan with ChatGPT · Family</PageTitle>
+<div class="page">
+    <header class="page-heading"><p class="eyebrow">Plan together</p><h1>Plan with ChatGPT</h1><p class="lede">Review your agreed meals and shopping before adding them to your family.</p></header>
+    @if (Importer is null)
+    {
+        <p>This import is available in the iPhone app.</p>
+    }
+    else
+    {
+        <details class="planning-guide" open="@(draft is null)">
+            <summary>How to bring in your conversation</summary>
+            <ol>
+                <li>Open your own ChatGPT account. Explicitly start voice or dictate a message about your weekly meals and purchases. Spanish is welcome. Tell it the dates and which suggestions you actually agreed on.</li>
+                <li>Copy the instructions below into that same conversation and ask ChatGPT to export the plan. Then copy its JSON reply.</li>
+                <li>Return here, paste the reply, and review everything. Only the selected entries are saved.</li>
+            </ol>
+            <p>You choose what to share with ChatGPT; that conversation is processed outside Family App under your ChatGPT account. Family App does not record your conversation or send this import to an AI service. Check your account's voice availability and privacy settings.</p>
+            <p>Live conversation inside Family App is a later step. This page imports a completed draft.</p>
+            <button class="secondary-button" @onclick="CopyPrompt">Copy export instructions</button>
+            <details><summary>Show export instructions</summary><pre class="planning-prompt">@ExportPrompt</pre></details>
+        </details>
+        @if (draft is null)
+        {
+            <label class="planning-field">Paste the exported plan<textarea rows="10" maxlength="128000" @bind="json" placeholder="Paste the JSON reply here"></textarea></label>
+            <button class="primary-button" @onclick="Read">Review plan</button>
+        }
+        else
+        {
+            <label class="planning-field">First date of the planning week<input type="date" @bind="draft.WeekStart" /></label>
+            @if (draft.Questions.Count > 0)
+            {
+                <h2>Questions to resolve</h2><p>Correct the draft below, then dismiss each question you have resolved. Nothing can be saved while questions remain.</p>
+                @foreach (var question in draft.Questions.ToArray())
+                {
+                    <div class="planning-question"><span>@question</span><button class="secondary-button" @onclick="() => draft.Questions.Remove(question)">Resolved</button></div>
+                }
+            }
+            <h2>Meals</h2><p>Tentative suggestions start unselected. Select them only if you agree. Existing meals will never be overwritten.</p>
+            @foreach (var meal in draft.Meals)
+            {
+                <div class="planning-entry" @key="meal">
+                    <label><input type="checkbox" @bind="meal.Include" /> Save this meal @(meal.Agreed ? "(agreed)" : "(tentative)")</label>
+                    <label>Date<input type="date" @bind="meal.Date" /></label>
+                    <label>Meal<select @bind="meal.Slot"><option value="">Choose a meal slot</option>@foreach (var slot in Enum.GetValues<MealType>()){<option value="@slot">@slot</option>}</select></label>
+                    <label>Dish<input maxlength="500" @bind="meal.Dish" /></label>
+                </div>
+            }
+            <h2>Shopping</h2><p>Explicit purchases start selected. Inferred ingredients need your confirmation: you may already have them. Products already on your open shopping list are skipped without changing their quantity.</p>
+            @foreach (var item in draft.Shopping)
+            {
+                <div class="planning-entry" @key="item">
+                    <label><input type="checkbox" @bind="item.Include" /> Save this purchase (@item.Source)</label>
+                    <label>Product<input maxlength="500" @bind="item.Name" /></label>
+                    <label>Stated quantity<input maxlength="500" @bind="item.Quantity" placeholder="Leave blank if unknown" /></label>
+                    <label>Unit<input maxlength="500" @bind="item.Unit" placeholder="Optional, e.g. kg" /></label>
+                </div>
+            }
+            <div class="editor-actions"><button class="secondary-button" disabled="@saving" @onclick="Discard">Discard draft</button><button class="primary-button" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "Confirm and save selected entries")</button></div>
+        }
+        @if (message is not null) { <p class="sync-warning" role="status">@message</p> }
+    }
+</div>
+@code {
+    private PlanningImportService? Importer => Services.GetService(typeof(PlanningImportService)) as PlanningImportService;
+    private PlanningDraft? draft;
+    private string? json, message;
+    private bool saving;
+    private void Read()
+    {
+        try { draft = Importer!.Read(json ?? ""); message = "Draft ready. Review dates, agreements and purchases; nothing has been saved yet."; }
+        catch (ArgumentException exception) { message = exception.Message; }
+    }
+    private void Discard() { draft = null; message = "Draft discarded. Nothing saved."; }
+    private async Task Save()
+    {
+        if (saving || draft is null) return;
+        saving = true;
+        try
+        {
+            var result = await Importer!.SaveAsync(draft);
+            message = result.AlreadyImported ? "This plan was already saved. No entries added again." : $"Saved locally: {result.MealsAdded} meals and {result.PurchasesAdded} purchases. Skipped {result.PurchasesSkipped} duplicate purchases. They will sync with your trusted family devices.";
+            draft = null; json = null;
+        }
+        catch (ArgumentException exception) { message = exception.Message; }
+        catch (InvalidOperationException exception) { message = exception.Message; }
+        catch { message = "Could not save this plan to local storage. Nothing was saved. Keep the draft and try again."; }
+        finally { saving = false; }
+    }
+    private async Task CopyPrompt()
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", ExportPrompt); message = "Export instructions copied. Paste them into your ChatGPT conversation."; }
+        catch { message = "Clipboard access failed. Expand the instructions and copy them manually."; }
+    }
+    private const string ExportPrompt = """
+        Export our meal-planning conversation for Family App. Return only a JSON object, no commentary.
+        Use this exact version 1 format (the examples below only demonstrate the shape):
+        {"version":1,"importId":"a new UUID for this plan, unchanged when re-exporting the same plan","weekStart":"YYYY-MM-DD or null","meals":[{"date":"YYYY-MM-DD or null","slot":"Breakfast, Lunch, Dinner or null","dish":"our dish name in our language","agreed":true}],"shopping":[{"name":"product name in our language","quantity":"only explicitly stated amount, or null","unit":"only explicitly stated unit, or null","source":"explicit or inferred"}],"questions":["Unresolved decisions or missing dates"]}
+        Preserve Spanish names when we speak Spanish. Include only discussed meals; mark tentative choices agreed:false.
+        Use exact dates within the seven-day planning week; never guess an unspecified week or date. Ask me to clarify missing dates or keep them null with a question.
+        Distinguish explicitly requested purchases (source:explicit) from suggested recipe ingredients (source:inferred); do not assume ingredients are missing at home. Never invent quantities.
+        Keep uncertain alternatives tentative; record unresolved decisions in questions. The example strings explaining the shape are not literal values; generate a real UUID and use valid ISO dates or null.
+        """;
+}

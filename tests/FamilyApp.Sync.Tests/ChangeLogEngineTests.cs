@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FamilyApp.Sync.ChangeLog;
 using Xunit;
 
@@ -66,6 +67,24 @@ public class ChangeLogEngineTests
         Assert.Empty(engine.Current());
         Assert.Equal(deleted, engine.GetCurrent("calendar", id));
         Assert.Equal(2, engine.Changes.Count);
+    }
+
+    [Fact]
+    public void Terminal_import_tombstone_uses_existing_serialization_and_version_ordering()
+    {
+        var id = Guid.NewGuid();
+        var removed = Change("shopping", id, "a", long.MaxValue, DateTimeOffset.UtcNow, "", true);
+        var json = JsonSerializer.Serialize(removed);
+        Assert.DoesNotContain("IsPermanentTombstone", json);
+        var restored = JsonSerializer.Deserialize<ChangeRecord>(json)!;
+        Assert.Equal(removed, restored);
+        var edit = Change("shopping", id, "b", long.MaxValue - 1, removed.Timestamp.AddDays(1), "{}");
+        foreach (var records in new[] { new[] { restored, edit }, new[] { edit, restored } })
+        {
+            var engine = new ChangeLogEngine(); engine.Merge(records);
+            Assert.Equal(removed, engine.GetCurrent("shopping", id));
+            Assert.Empty(engine.Current());
+        }
     }
 
     private static ChangeRecord Change(
