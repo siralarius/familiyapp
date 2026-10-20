@@ -8,6 +8,56 @@ namespace FamilyApp.Sync.Tests;
 public class PairingCoordinatorTests
 {
     [Fact]
+    public async Task Accepted_response_recovers_after_expiry_but_unaccepted_response_still_expires()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var time = new MutableTimeProvider(DateTimeOffset.UtcNow);
+        var family = Guid.NewGuid();
+        var host = new FamilyDeviceIdentity(family, Guid.NewGuid(), "Host");
+        var guest = new FamilyDeviceIdentity(family, Guid.NewGuid(), "Guest");
+        var store = new FakeSecurePairingStore();
+        var pairing = new PairingCoordinator(store, new EcdhPairingKeyAgreement(), time);
+        var guestPairing = new PairingCoordinator(new FakeSecurePairingStore(), new EcdhPairingKeyAgreement(), time);
+        var response = await guestPairing.AcceptOfferAsync(guest, await pairing.CreateOfferAsync(host, token), token);
+        var unaccepted = await guestPairing.AcceptOfferAsync(guest, await pairing.CreateOfferAsync(host, token), token);
+        await pairing.CompletePairingAsync(host, response, token);
+        var secret = await pairing.ReadTrustedSecretAsync(host, guest.DeviceId, token);
+        time.Advance(TimeSpan.FromMinutes(6));
+        var restarted = new PairingCoordinator(store, new EcdhPairingKeyAgreement(), time);
+
+        await restarted.CompletePairingAsync(host, response, token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => restarted.CompletePairingAsync(host, unaccepted, token));
+        Assert.Equal(secret, await restarted.ReadTrustedSecretAsync(host, guest.DeviceId, token));
+        await restarted.ForgetTrustedDeviceAsync(host, guest.DeviceId, token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => restarted.CompletePairingAsync(host, response, token));
+    }
+
+    [Fact]
+    public async Task Only_the_exact_accepted_response_can_resume_pairing_and_forgetting_revokes_it()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var family = Guid.NewGuid();
+        var host = new FamilyDeviceIdentity(family, Guid.NewGuid(), "Host");
+        var guest = new FamilyDeviceIdentity(family, Guid.NewGuid(), "Guest");
+        var store = new FakeSecurePairingStore();
+        var pairing = new PairingCoordinator(store, new EcdhPairingKeyAgreement());
+        var guestPairing = new PairingCoordinator(new FakeSecurePairingStore(), new EcdhPairingKeyAgreement());
+        var offer = await pairing.CreateOfferAsync(host, token);
+        var response = await guestPairing.AcceptOfferAsync(guest, offer, token);
+        var otherResponse = await guestPairing.AcceptOfferAsync(guest, offer, token);
+        await pairing.CompletePairingAsync(host, response, token);
+        var secret = await pairing.ReadTrustedSecretAsync(host, guest.DeviceId, token);
+        var restarted = new PairingCoordinator(store, new EcdhPairingKeyAgreement());
+
+        await restarted.CompletePairingAsync(host, response, token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => restarted.CompletePairingAsync(host, otherResponse, token));
+        Assert.Equal(secret, await restarted.ReadTrustedSecretAsync(host, guest.DeviceId, token));
+        await restarted.ForgetTrustedDeviceAsync(host, guest.DeviceId, token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => restarted.CompletePairingAsync(host, response, token));
+        Assert.Null(await restarted.ReadTrustedSecretAsync(host, guest.DeviceId, token));
+    }
+
+    [Fact]
     public async Task Devices_pair_using_qr_payloads_and_store_shared_secret_only_in_secure_store()
     {
         var familyId = Guid.NewGuid();
@@ -107,6 +157,83 @@ public class PairingCoordinatorTests
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => pairingB.AcceptOfferAsync(deviceB, offer, cancellationToken));
         Assert.Equal("The pairing code has expired.", exception.Message);
+    }
+
+    [Theory]
+    [InlineData("DeviceId")]
+    [InlineData("FamilyId")]
+    [InlineData("Version")]
+    [InlineData("PublicKey")]
+    [InlineData("Nonce")]
+    [InlineData("DisplayName")]
+    [InlineData("ExpiresAtUtc")]
+    public void Offer_is_fully_validated_without_writing_trust_before_joining(string invalidField)
+    {
+        var familyId = Guid.NewGuid();
+        var identity = new FamilyDeviceIdentity(familyId, Guid.NewGuid(), "Joining phone");
+        using var key = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        var payload = new Dictionary<string, object>
+        {
+            ["Version"] = 1, ["FamilyId"] = familyId, ["DeviceId"] = Guid.NewGuid(),
+            ["DisplayName"] = "Offering phone", ["PublicKey"] = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()),
+            ["Nonce"] = Convert.ToBase64String(new byte[32]), ["ExpiresAtUtc"] = DateTimeOffset.UtcNow.AddMinutes(5)
+        };
+        var store = new FakeSecurePairingStore();
+        var pairing = new PairingCoordinator(store, new EcdhPairingKeyAgreement());
+        pairing.ValidateOfferForJoining(identity, ToPairingQr(payload));
+        Assert.Empty(store.Values);
+        payload[invalidField] = invalidField switch
+        {
+            "DeviceId" => Guid.Empty, "FamilyId" => Guid.Empty, "Version" => 999, "PublicKey" => "AQ==", "Nonce" => "AQ==",
+            "DisplayName" => "", _ => DateTimeOffset.UtcNow.AddMinutes(-1)
+        };
+        Assert.ThrowsAny<Exception>(() => pairing.ValidateOfferForJoining(identity, ToPairingQr(payload)));
+        Assert.Empty(store.Values);
+        Assert.Equal(familyId, identity.FamilyId);
+    }
+
+    [Fact]
+    public async Task Expiry_after_preflight_does_not_select_or_persist_a_family()
+    {
+        var time = new MutableTimeProvider(DateTimeOffset.UtcNow);
+        var host = new FamilyDeviceIdentity(Guid.NewGuid(), Guid.NewGuid(), "Host");
+        var local = new FamilyDeviceIdentity(Guid.NewGuid(), Guid.NewGuid(), "Joiner");
+        var offer = await new PairingCoordinator(new FakeSecurePairingStore(), new EcdhPairingKeyAgreement(), time)
+            .CreateOfferAsync(host, TestContext.Current.CancellationToken);
+        time.Advance(TimeSpan.FromMinutes(4));
+        var store = new FakeSecurePairingStore();
+        var pairing = new PairingCoordinator(store, new ExpiringKeyAgreement(time), time);
+        var selected = false;
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            pairing.AcceptOfferForJoiningAsync(local, offer, _ => { selected = true; return Task.CompletedTask; }, TestContext.Current.CancellationToken));
+        Assert.Contains("expired", exception.Message);
+        Assert.False(selected); Assert.Empty(store.Values);
+    }
+
+    [Fact]
+    public async Task Family_selection_follows_successful_proof_and_secure_storage()
+    {
+        var host = new FamilyDeviceIdentity(Guid.NewGuid(), Guid.NewGuid(), "Host");
+        var local = new FamilyDeviceIdentity(Guid.NewGuid(), Guid.NewGuid(), "Joiner");
+        var offer = await new PairingCoordinator(new FakeSecurePairingStore(), new EcdhPairingKeyAgreement()).CreateOfferAsync(host, TestContext.Current.CancellationToken);
+        var store = new FakeSecurePairingStore();
+        var pairing = new PairingCoordinator(store, new EcdhPairingKeyAgreement());
+        var selected = Guid.Empty;
+        var response = await pairing.AcceptOfferForJoiningAsync(local, offer, familyId =>
+        {
+            Assert.Single(store.Values); selected = familyId; return Task.CompletedTask;
+        }, TestContext.Current.CancellationToken);
+        Assert.Equal(host.FamilyId, selected);
+        Assert.Equal(host.FamilyId, PairingCoordinator.InspectQrPayload(response).FamilyId);
+    }
+
+    private sealed class ExpiringKeyAgreement(MutableTimeProvider time) : IPairingKeyAgreement
+    {
+        private readonly EcdhPairingKeyAgreement inner = new();
+        public byte[] ExportPublicKey(ReadOnlySpan<byte> privateKey) => inner.ExportPublicKey(privateKey);
+        public PairingKeyPair CreateKeyPair() { time.Advance(TimeSpan.FromMinutes(2)); return inner.CreateKeyPair(); }
+        public byte[] DeriveKey(ReadOnlySpan<byte> privateKey, ReadOnlySpan<byte> remotePublicKey, ReadOnlySpan<byte> context)
+            => inner.DeriveKey(privateKey, remotePublicKey, context);
     }
 
     private static string ToPairingQr(object payload)

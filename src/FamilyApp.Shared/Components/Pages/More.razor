@@ -31,19 +31,20 @@
 </div>
 
 @code {
-	private string StatusLabel => SyncStatus.LatestStatus?.State switch
+	private string StatusLabel => SyncStatus.OverviewState switch
 	{
-		PeerSyncState.Synchronized => "Synced",
-		PeerSyncState.Retrying => "Reconnecting",
-		PeerSyncState.Rejected => "Pairing required",
+		PeerSyncOverviewState.Synchronized => "Synced",
+		PeerSyncOverviewState.Retrying => "Reconnecting",
+		PeerSyncOverviewState.PairingRequired => "Pairing required",
+		PeerSyncOverviewState.PartiallySynchronized => "Some devices need attention",
 		_ => "Waiting for a trusted device"
 	};
 
-	private string StatusClass => SyncStatus.LatestStatus?.State switch
+	private string StatusClass => SyncStatus.OverviewState switch
 	{
-		PeerSyncState.Synchronized => "is-synced",
-		PeerSyncState.Retrying => "is-retrying",
-		PeerSyncState.Rejected => "is-rejected",
+		PeerSyncOverviewState.Synchronized => "is-synced",
+		PeerSyncOverviewState.Retrying or PeerSyncOverviewState.PartiallySynchronized => "is-retrying",
+		PeerSyncOverviewState.PairingRequired => "is-rejected",
 		_ => "is-idle"
 	};
 

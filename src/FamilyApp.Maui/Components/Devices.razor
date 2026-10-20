@@ -1,152 +1,171 @@
 @page "/devices"
 @using FamilyApp.Maui
 @using FamilyApp.Sync.Pairing
+@using FamilyApp.Sync.Transport
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Web
+@implements IDisposable
 @inject IDevicePairingService Pairing
 @inject IQrScanner QrScanner
 @inject IQrCodeRenderer QrCodeRenderer
+@inject PeerSyncStatusService SyncStatus
+@inject NavigationManager Navigation
 
+@if (!string.IsNullOrEmpty(diagnosticStep))
+{
+    <aside role="status" aria-live="polite" style="position:fixed;z-index:1000;top:8px;left:12px;right:12px;padding:16px;background:white;color:#17221c;border:2px solid #386a50;border-radius:12px;box-shadow:0 3px 12px #0003;max-height:45vh;overflow:auto;">
+        <strong>Pairing: @diagnosticStep</strong>
+        <p>@message</p>
+        @if (!string.IsNullOrEmpty(exceptionDetails))
+        {
+            <pre style="white-space:pre-wrap;overflow-wrap:anywhere;">@exceptionDetails</pre>
+        }
+        @if (!busy)
+        {
+            <button class="secondary-button" @onclick="DismissDiagnostics">Dismiss</button>
+        }
+    </aside>
+}
 <div class="page">
     <h1>Family devices</h1>
-    <p>Keep both phones open on the same Wi-Fi while pairing and syncing.</p>
-    <p>Your family code: <strong>@Pairing.Identity.FamilyId</strong></p>
-    <p>On a new phone, scan the offer QR code and confirm joining before adding household data.</p>
-    <p role="status">@message</p>
-    <button class="primary-button" @onclick="CreateOfferQr">Create offer QR code</button>
+    <p>Keep both apps open on the same Wi-Fi.</p>
+    @if (waitingForJoin)
+    {
+        <p role="status">@message</p>
+    }
+    <h2>Invite a family member</h2>
+    <p>Show this QR code on your device. The new phone scans it to join and sync automatically.</p>
+    <button class="primary-button" disabled="@busy" @onclick="CreateOfferQr">Create offer QR code</button>
     @if (!string.IsNullOrEmpty(offerQrImage))
     {
-        <p>Scan this code on the new phone:</p>
+        <p>Waiting for the new phone to join. This code expires in five minutes.</p>
         <img alt="Pairing offer QR code" src="@offerQrImage" style="display:block;max-width:360px;width:calc(100% - 48px);height:auto;padding:24px;background:white;image-rendering:pixelated;" />
     }
+    <h2>Join a family</h2>
+    <p>Scan the other device's offer to join that family. No response QR code is needed.</p>
+    <p role="status">@message</p>
+    <button class="primary-button" disabled="@busy" @onclick="ScanOfferQr">Scan QR and join</button>
 
-    <h2>Join from this phone</h2>
-    <p>Scan an offer from another phone, confirm joining that family, then show the response QR code back to the first phone.</p>
-    <button class="secondary-button" @onclick="ScanOfferQr">Scan offer QR code</button>
-    @if (pendingOfferFamilyId is Guid targetFamily)
-    {
-        <p>Scanned family <strong>@targetFamily</strong>. Confirm joining this family and create your response QR code.</p>
-        <button class="primary-button" @onclick="ConfirmOffer">Confirm and create response QR code</button>
-    }
-    @if (!string.IsNullOrEmpty(responseQrImage))
-    {
-        <p>Show this response QR code to the first phone:</p>
-        <img alt="Pairing response QR code" src="@responseQrImage" style="display:block;max-width:360px;width:calc(100% - 48px);height:auto;padding:24px;background:white;image-rendering:pixelated;" />
-    }
-
-    <h2>Complete on first phone</h2>
-    <p>Scan the response QR code from the second phone to finish pairing.</p>
-    <button class="secondary-button" @onclick="ScanResponseQr">Scan response QR code</button>
-
-    <h2>Manual fallback</h2>
-    <p>If camera scanning is unavailable, manual code entry still works.</p>
-    <input placeholder="Family code from the other phone" @bind="familyCode" />
-    <button class="secondary-button" @onclick="Join">Join family</button>
-    <button class="secondary-button" @onclick="Offer">Create pairing offer code</button>
-    <textarea aria-label="Pairing code from the other phone" @bind="incoming"></textarea>
-    <button class="secondary-button" @onclick="Accept">Accept offer code</button>
-    <button class="secondary-button" @onclick="Complete">Complete pairing</button>
-    @if (!string.IsNullOrEmpty(outgoing))
-    {
-        <p>Copy this code to the other phone:</p>
-        <textarea aria-label="Generated pairing code" readonly value="@outgoing"></textarea>
-    }
+    <details>
+        <summary>Manual pairing fallback</summary>
+        <p>Your family code: <strong>@Pairing.Identity.FamilyId</strong></p>
+        <input placeholder="Family code from the other phone" @bind="familyCode" />
+        <button class="secondary-button" disabled="@busy" @onclick="Join">Join family</button>
+        <button class="secondary-button" disabled="@busy" @onclick="Offer">Create pairing offer code</button>
+        <textarea aria-label="Pairing code from the other phone" @bind="incoming"></textarea>
+        <button class="secondary-button" disabled="@busy" @onclick="Accept">Accept offer code</button>
+        <button class="secondary-button" disabled="@busy" @onclick="Complete">Complete pairing</button>
+        @if (!string.IsNullOrEmpty(outgoing))
+        {
+            <p>Copy this code to the other phone:</p>
+            <textarea aria-label="Generated pairing code" readonly value="@outgoing"></textarea>
+        }
+    </details>
     <a href="/more">Back to sync status</a>
 </div>
 
 @code {
-    private readonly HashSet<string> recentScans = new(StringComparer.Ordinal);
-    private string familyCode = "", incoming = "", outgoing = "", message = "", offerQrImage = "", responseQrImage = "";
-    private string? pendingOfferPayload;
-    private Guid? pendingOfferFamilyId;
+    private string familyCode = "", incoming = "", outgoing = "", message = "", offerQrImage = "";
+    private bool busy, waitingForJoin, disposed;
+    private string diagnosticStep = "", exceptionDetails = "";
+    private DateTimeOffset offerCreatedAt;
+
+    protected override void OnInitialized() => SyncStatus.Changed += OnSyncStatusChanged;
+
+    private void OnSyncStatusChanged()
+    {
+        var status = SyncStatus.LatestStatus;
+        if (!disposed && waitingForJoin && status is { State: PeerSyncState.Synchronized, PairingCompleted: true } &&
+            status.TimestampUtc >= offerCreatedAt)
+            _ = InvokeAsync(() => { if (!disposed) Navigation.NavigateTo("/more"); });
+    }
 
     private Task Join() => Run(async () => { await Pairing.JoinFamilyAsync(Guid.Parse(familyCode)); message = "Family selected."; });
     private Task Offer() => Run(async () => { outgoing = await Pairing.CreateOfferAsync(); message = "Offer ready."; });
     private Task Accept() => Run(async () => { outgoing = await Pairing.AcceptOfferAsync(incoming.Trim()); message = "Response ready. Complete pairing on the first phone."; });
-    private Task Complete() => Run(async () => { await Pairing.CompletePairingAsync(incoming.Trim()); outgoing = ""; message = "Paired. Sync starts automatically while both phones are open."; });
+    private Task Complete() => Run(async () => { await Pairing.CompletePairingAsync(incoming.Trim()); outgoing = ""; message = "Paired. Sync starts automatically while both apps are open."; });
 
     private Task CreateOfferQr() => Run(async () =>
     {
+        waitingForJoin = false;
+        offerQrImage = "";
+        diagnosticStep = "Creating invitation";
+        exceptionDetails = "";
+        message = "Creating offer QR code…";
+        StateHasChanged();
         var offer = await Pairing.CreateOfferAsync();
         offerQrImage = await QrCodeRenderer.RenderPngDataUrlAsync(offer);
-        message = "Offer QR code ready. It expires in five minutes.";
+        offerCreatedAt = DateTimeOffset.UtcNow;
+        waitingForJoin = true;
+        message = "Offer QR code ready.";
     });
 
-    private Task ScanOfferQr() => ScanAndHandleAsync(expectOffer: true);
-    private Task ScanResponseQr() => ScanAndHandleAsync(expectOffer: false);
-
-    private Task ConfirmOffer() => Run(async () =>
+    private Task ScanOfferQr() => Run(async () =>
     {
-        if (pendingOfferPayload is null || pendingOfferFamilyId is null)
-            throw new InvalidOperationException("Scan an offer QR code first.");
-
-        await Pairing.JoinFamilyAsync(pendingOfferFamilyId.Value);
-        var response = await Pairing.AcceptOfferAsync(pendingOfferPayload);
-        responseQrImage = await QrCodeRenderer.RenderPngDataUrlAsync(response);
-        outgoing = response;
-        pendingOfferPayload = null;
-        pendingOfferFamilyId = null;
-        message = "Response QR code ready. Show it on this phone so the first phone can scan it.";
-    });
-
-    private async Task ScanAndHandleAsync(bool expectOffer)
-    {
+        diagnosticStep = "Opening camera";
+        exceptionDetails = "";
+        message = "Waiting for a QR code to be detected.";
+        StateHasChanged();
         var scan = await QrScanner.ScanAsync();
+        diagnosticStep = $"Camera returned: {scan.Status}";
         if (scan.Status == QrScanStatus.PermissionDenied)
         {
-            message = "Camera access is required to scan QR codes. Enable camera permission in iPhone Settings or use manual pairing.";
+            message = "Enable camera access in iPhone Settings to scan, or use manual pairing.";
             return;
         }
-        if (scan.Status == QrScanStatus.Canceled)
-        {
-            message = "QR scan canceled.";
-            return;
-        }
-        if (scan.Status == QrScanStatus.Unsupported || string.IsNullOrWhiteSpace(scan.Payload))
+        if (scan.Status == QrScanStatus.Canceled) { message = "QR scan canceled."; return; }
+        if (scan.Status != QrScanStatus.Success || string.IsNullOrWhiteSpace(scan.Payload))
         {
             message = "QR scanning is unavailable on this device. Use manual pairing.";
             return;
         }
-        if (!recentScans.Add(scan.Payload))
+        message = "Joining your family and syncing…";
+        StateHasChanged();
+        var join = Pairing.JoinFromOfferAsync(scan.Payload, step =>
         {
-            message = "That QR code was already scanned. Use a new code or wait for a fresh offer.";
-            return;
-        }
-
-        await Run(async () =>
-        {
-            var details = PairingCoordinator.InspectQrPayload(scan.Payload);
-            if (expectOffer)
-            {
-                if (details.Kind != PairingQrPayloadKind.Offer)
-                    throw new InvalidOperationException("Scan a pairing offer QR code from the first phone.");
-                pendingOfferPayload = scan.Payload;
-                pendingOfferFamilyId = details.FamilyId;
-                message = $"Offer scanned from family {details.FamilyId}. Confirm to join and create your response code.";
-                return;
-            }
-
-            if (details.Kind != PairingQrPayloadKind.Response)
-                throw new InvalidOperationException("Scan a pairing response QR code from the second phone.");
-
-            await Pairing.CompletePairingAsync(scan.Payload);
-            pendingOfferPayload = null;
-            pendingOfferFamilyId = null;
-            responseQrImage = "";
-            outgoing = "";
-            message = "Paired. Sync starts automatically while both phones are open.";
+            diagnosticStep = step;
+            _ = InvokeAsync(StateHasChanged);
         });
-    }
+        var timeout = Task.Delay(TimeSpan.FromSeconds(40));
+        if (await Task.WhenAny(join, timeout) != join)
+        {
+            diagnosticStep += " — still waiting";
+            message = "This step has taken over 40 seconds. The join has not completed. Please report the step shown above.";
+            StateHasChanged();
+        }
+        await join;
+        if (!disposed) Navigation.NavigateTo("/more");
+    });
 
     private async Task Run(Func<Task> action)
     {
+        if (busy) return;
+        busy = true;
         try { await action(); }
-        catch (FormatException) { message = "Enter a valid family code."; }
-        catch (InvalidOperationException exception) { message = exception.Message; }
+        catch (FormatException)
+        {
+            diagnosticStep = "Invalid family code";
+            message = "Enter a valid family code from the other phone.";
+            exceptionDetails = "";
+        }
         catch (Exception exception)
         {
             Console.Error.WriteLine($"Pairing failed: {exception.GetType().Name} (0x{exception.HResult:X8})");
-            message = "Pairing could not finish. Check the code and try again.";
+            diagnosticStep = string.IsNullOrEmpty(diagnosticStep) ? "Failed" : diagnosticStep + " — failed";
+            message = exception is InvalidOperationException ? exception.Message : "Pairing could not finish. See the exception details below.";
+            var details = new List<string>();
+            for (Exception? error = exception; error is not null; error = error.InnerException)
+                details.Add($"{error.GetType().FullName} (0x{error.HResult:X8})");
+            exceptionDetails = string.Join("\nCaused by: ", details);
         }
+        finally { busy = false; }
+    }
+
+    private void DismissDiagnostics() { diagnosticStep = ""; exceptionDetails = ""; }
+
+    public void Dispose()
+    {
+        disposed = true;
+        SyncStatus.Changed -= OnSyncStatusChanged;
     }
 }
