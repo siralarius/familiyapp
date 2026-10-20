@@ -6,6 +6,24 @@ namespace FamilyApp.Sync.Tests;
 public class PeerSyncStatusServiceTests
 {
     [Fact]
+    public async Task Lost_trust_for_a_known_peer_remains_actionable_beside_a_healthy_peer()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var service = new PeerSyncStatusService(new InMemoryStatusStore());
+        var first = Guid.NewGuid(); var second = Guid.NewGuid(); var unknown = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        await service.RecordAsync(new PeerSyncStatus(first, PeerSyncState.Synchronized, null, now), token);
+        await service.RecordAsync(new PeerSyncStatus(second, PeerSyncState.Synchronized, null, now.AddSeconds(1)), token);
+        await service.RecordAsync(new PeerSyncStatus(second, PeerSyncState.Unpaired, null, now.AddSeconds(2)), token);
+        Assert.Equal(PeerSyncOverviewState.PartiallySynchronized, service.OverviewState);
+        await service.RecordAsync(new PeerSyncStatus(first, PeerSyncState.Synchronized, null, now.AddSeconds(3)), token);
+        await service.RecordAsync(new PeerSyncStatus(unknown, PeerSyncState.Unpaired, null, now.AddSeconds(4)), token);
+        Assert.Equal(PeerSyncOverviewState.PartiallySynchronized, service.OverviewState);
+        await service.RecordAsync(new PeerSyncStatus(second, PeerSyncState.Synchronized, null, now.AddSeconds(5)), token);
+        Assert.Equal(PeerSyncOverviewState.Synchronized, service.OverviewState);
+    }
+
+    [Fact]
     public async Task Unpaired_third_device_does_not_replace_a_healthy_paired_connection()
     {
         var token = TestContext.Current.CancellationToken;

@@ -36,7 +36,7 @@ public sealed class PeerSyncStatusService
                 return states.Any(state => state != PeerSyncState.Synchronized)
                     ? PeerSyncOverviewState.PartiallySynchronized : PeerSyncOverviewState.Synchronized;
             if (states.Contains(PeerSyncState.Retrying)) return PeerSyncOverviewState.Retrying;
-            return states.Contains(PeerSyncState.Rejected) || LatestStatus?.State == PeerSyncState.Unpaired
+            return states.Contains(PeerSyncState.Rejected) || states.Contains(PeerSyncState.Unpaired) || LatestStatus?.State == PeerSyncState.Unpaired
                 ? PeerSyncOverviewState.PairingRequired : PeerSyncOverviewState.Waiting;
         }
     }
@@ -75,9 +75,8 @@ public sealed class PeerSyncStatusService
         LatestStatus = status;
         // Discovery of an unrelated device is not a failure of an existing paired connection.
         // Keep LatestStatus as the individual event for invitation completion subscribers.
-        if (status.State == PeerSyncState.Unpaired)
-            _peerStatuses.TryRemove(status.PeerDeviceId, out _);
-        else if (status.PeerDeviceId != Guid.Empty)
+        if (status.PeerDeviceId != Guid.Empty &&
+            (status.State != PeerSyncState.Unpaired || _peerStatuses.ContainsKey(status.PeerDeviceId)))
             _peerStatuses[status.PeerDeviceId] = status;
         if (status.State == PeerSyncState.Synchronized)
         {
