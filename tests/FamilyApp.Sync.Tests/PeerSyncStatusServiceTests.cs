@@ -6,6 +6,51 @@ namespace FamilyApp.Sync.Tests;
 public class PeerSyncStatusServiceTests
 {
     [Fact]
+    public async Task Known_peer_with_lost_trust_is_recognized_after_restart_before_any_ui_initialization()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var store = new InMemoryStatusStore();
+        var peer = Guid.NewGuid(); var unknown = Guid.NewGuid(); var now = DateTimeOffset.UtcNow;
+        await new PeerSyncStatusService(store).RecordAsync(new PeerSyncStatus(peer, PeerSyncState.Synchronized, null, now), token);
+        var restarted = new PeerSyncStatusService(store);
+
+        await restarted.RecordAsync(new PeerSyncStatus(peer, PeerSyncState.Unpaired, null, now.AddSeconds(1)), token);
+        Assert.Equal(PeerSyncOverviewState.PairingRequired, restarted.OverviewState);
+        await restarted.RecordAsync(new PeerSyncStatus(unknown, PeerSyncState.Unpaired, null, now.AddSeconds(2)), token);
+        Assert.Equal(PeerSyncOverviewState.PairingRequired, restarted.OverviewState);
+        Assert.Equal(new[] { peer }, store.KnownPeers);
+    }
+
+    [Fact]
+    public async Task Switching_family_clears_cached_health_and_loads_only_that_familys_known_peers()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var store = new InMemoryStatusStore();
+        var oldFamily = store.Family;
+        var oldPeer = Guid.NewGuid(); var newPeer = Guid.NewGuid(); var now = DateTimeOffset.UtcNow;
+        var service = new PeerSyncStatusService(store);
+        await service.RecordAsync(new PeerSyncStatus(oldPeer, PeerSyncState.Synchronized, null, now), token);
+        await service.RecordAsync(new PeerSyncStatus(Guid.Empty, PeerSyncState.Retrying, null, now.AddSeconds(1)), token);
+        store.Family = Guid.NewGuid();
+
+        await service.ReloadForFamilyAsync(token);
+        Assert.Equal(PeerSyncOverviewState.Waiting, service.OverviewState);
+        Assert.Null(service.LatestStatus);
+        Assert.Null(service.LastSuccessfulSyncAtUtc);
+        await service.RecordAsync(new PeerSyncStatus(newPeer, PeerSyncState.Retrying, null, now.AddSeconds(2)), token);
+        Assert.Equal(PeerSyncOverviewState.Retrying, service.OverviewState);
+        await service.RecordAsync(new PeerSyncStatus(newPeer, PeerSyncState.Synchronized, null, now.AddSeconds(3)), token);
+        Assert.Equal(PeerSyncOverviewState.Synchronized, service.OverviewState);
+        Assert.Equal(new[] { newPeer }, store.KnownPeers);
+
+        store.Family = oldFamily;
+        await service.ReloadForFamilyAsync(token);
+        await service.RecordAsync(new PeerSyncStatus(oldPeer, PeerSyncState.Unpaired, null, now.AddSeconds(4)), token);
+        Assert.Equal(PeerSyncOverviewState.PairingRequired, service.OverviewState);
+        Assert.Equal(now, service.LastSuccessfulSyncAtUtc);
+    }
+
+    [Fact]
     public async Task Lost_trust_for_a_known_peer_remains_actionable_beside_a_healthy_peer()
     {
         var token = TestContext.Current.CancellationToken;
@@ -121,7 +166,20 @@ public class PeerSyncStatusServiceTests
 
     private sealed class InMemoryStatusStore : IPeerSyncStatusStore
     {
-        public DateTimeOffset? Value { get; private set; }
+        private readonly Dictionary<Guid, DateTimeOffset> _timestamps = [];
+        private readonly Dictionary<Guid, Guid[]> _peers = [];
+        public Guid Family { get; set; } = Guid.NewGuid();
+        public DateTimeOffset? Value => _timestamps.TryGetValue(Family, out var value) ? value : null;
+        public IReadOnlyCollection<Guid> KnownPeers => _peers.TryGetValue(Family, out var peers) ? peers : [];
+
+        public Task<IReadOnlyCollection<Guid>> ReadKnownPeersAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(KnownPeers);
+
+        public Task WriteKnownPeersAsync(IReadOnlyCollection<Guid> peerIds, CancellationToken cancellationToken = default)
+        {
+            _peers[Family] = peerIds.ToArray();
+            return Task.CompletedTask;
+        }
 
         public Task<DateTimeOffset?> ReadLastSuccessfulSyncAsync(CancellationToken cancellationToken = default)
         {
@@ -132,7 +190,7 @@ public class PeerSyncStatusServiceTests
         public Task WriteLastSuccessfulSyncAsync(DateTimeOffset timestampUtc, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            Value = timestampUtc;
+            _timestamps[Family] = timestampUtc;
             return Task.CompletedTask;
         }
     }

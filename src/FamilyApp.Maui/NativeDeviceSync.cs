@@ -51,6 +51,7 @@ public sealed class NativeDeviceSync : IDevicePairingService
             }
             Identity = new FamilyDeviceIdentity(familyId, Identity.DeviceId, Identity.DisplayName);
             Preferences.Default.Set("family-id", familyId.ToString());
+            await _status.ReloadForFamilyAsync();
             if (_active) Start();
         }
         finally { _lifecycle.Release(); }

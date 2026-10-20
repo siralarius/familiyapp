@@ -8,15 +8,20 @@ public interface IPeerSyncStatusStore
 {
     Task<DateTimeOffset?> ReadLastSuccessfulSyncAsync(CancellationToken cancellationToken = default);
     Task WriteLastSuccessfulSyncAsync(DateTimeOffset timestampUtc, CancellationToken cancellationToken = default);
+    Task<IReadOnlyCollection<Guid>> ReadKnownPeersAsync(CancellationToken cancellationToken = default);
+    Task WriteKnownPeersAsync(IReadOnlyCollection<Guid> peerIds, CancellationToken cancellationToken = default);
 }
 
 public sealed class PeerSyncStatusService
 {
     private readonly IPeerSyncStatusStore _store;
     private readonly SemaphoreSlim _initializeLock = new(1, 1);
+    private readonly SemaphoreSlim _recordLock = new(1, 1);
     private bool _initialized;
     private readonly ConcurrentDictionary<Guid, PeerSyncStatus> _peerStatuses = new();
     private PeerSyncStatus? _globalStatus;
+    private readonly HashSet<Guid> _knownPeers = [];
+    private bool _knownPeersDirty;
 
     public PeerSyncStatusService(IPeerSyncStatusStore store)
         => _store = store ?? throw new ArgumentNullException(nameof(store));
@@ -52,6 +57,13 @@ public sealed class PeerSyncStatusService
             try
             {
                 LastSuccessfulSyncAtUtc = await _store.ReadLastSuccessfulSyncAsync(cancellationToken);
+                foreach (var peer in await _store.ReadKnownPeersAsync(cancellationToken))
+                {
+                    if (peer == Guid.Empty) continue;
+                    _knownPeers.Add(peer);
+                    _peerStatuses.TryAdd(peer, new PeerSyncStatus(peer, PeerSyncState.Retrying,
+                        "Waiting for a known device.", DateTimeOffset.MinValue));
+                }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -59,7 +71,7 @@ public sealed class PeerSyncStatusService
             }
             catch
             {
-                PersistenceWarning = "Last-sync time could not be loaded.";
+                PersistenceWarning = "Sync status could not be loaded.";
             }
 
             _initialized = true;
@@ -73,35 +85,74 @@ public sealed class PeerSyncStatusService
     public async Task RecordAsync(PeerSyncStatus status, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(status);
-        LatestStatus = status;
-        // Discovery of an unrelated device is not a failure of an existing paired connection.
-        // Keep LatestStatus as the individual event for invitation completion subscribers.
-        if (status.PeerDeviceId != Guid.Empty &&
-            (status.State != PeerSyncState.Unpaired || _peerStatuses.ContainsKey(status.PeerDeviceId)))
-            _peerStatuses[status.PeerDeviceId] = status;
-        if (status.PeerDeviceId == Guid.Empty && status.State != PeerSyncState.Unpaired)
-            Volatile.Write(ref _globalStatus, status);
-        if (status.State == PeerSyncState.Synchronized)
+        await _recordLock.WaitAsync(cancellationToken);
+        try
         {
-            var globalStatus = Volatile.Read(ref _globalStatus);
-            if (globalStatus is not null && globalStatus.TimestampUtc <= status.TimestampUtc)
-                Interlocked.CompareExchange(ref _globalStatus, null, globalStatus);
-            LastSuccessfulSyncAtUtc = status.TimestampUtc;
-            PersistenceWarning = null;
+            await InitializeAsync(cancellationToken);
+            LatestStatus = status;
+            // Discovery of an unrelated device is not a failure of an existing paired connection.
+            // Keep LatestStatus as the individual event for invitation completion subscribers.
+            if (status.PeerDeviceId != Guid.Empty &&
+                (status.State != PeerSyncState.Unpaired || _peerStatuses.ContainsKey(status.PeerDeviceId)))
+                _peerStatuses[status.PeerDeviceId] = status;
+            if (status.PeerDeviceId == Guid.Empty && status.State != PeerSyncState.Unpaired)
+                Volatile.Write(ref _globalStatus, status);
+            if (status.PeerDeviceId != Guid.Empty && status.State != PeerSyncState.Unpaired && _knownPeers.Add(status.PeerDeviceId))
+                _knownPeersDirty = true;
+            if (_knownPeersDirty)
+            {
+                try { await _store.WriteKnownPeersAsync(_knownPeers.ToArray(), cancellationToken); _knownPeersDirty = false; }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+                catch { PersistenceWarning = "Known devices could not be saved."; }
+            }
+            if (status.State == PeerSyncState.Synchronized)
+            {
+                var globalStatus = Volatile.Read(ref _globalStatus);
+                if (globalStatus is not null && globalStatus.TimestampUtc <= status.TimestampUtc)
+                    Interlocked.CompareExchange(ref _globalStatus, null, globalStatus);
+                LastSuccessfulSyncAtUtc = status.TimestampUtc;
+                if (!_knownPeersDirty) PersistenceWarning = null;
+                try
+                {
+                    await _store.WriteLastSuccessfulSyncAsync(status.TimestampUtc, cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch
+                {
+                    PersistenceWarning = "Last-sync time could not be saved.";
+                }
+            }
+
+            Changed?.Invoke();
+        }
+        finally { _recordLock.Release(); }
+    }
+
+    // The caller switches the store's family scope after stopping old-family exchanges.
+    public async Task ReloadForFamilyAsync(CancellationToken cancellationToken = default)
+    {
+        await _recordLock.WaitAsync(cancellationToken);
+        try
+        {
+            await _initializeLock.WaitAsync(cancellationToken);
             try
             {
-                await _store.WriteLastSuccessfulSyncAsync(status.TimestampUtc, cancellationToken);
+                _initialized = false;
+                _knownPeers.Clear();
+                _knownPeersDirty = false;
+                _peerStatuses.Clear();
+                Volatile.Write(ref _globalStatus, null);
+                LatestStatus = null;
+                LastSuccessfulSyncAtUtc = null;
+                PersistenceWarning = null;
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch
-            {
-                PersistenceWarning = "Last-sync time could not be saved.";
-            }
+            finally { _initializeLock.Release(); }
+            await InitializeAsync(cancellationToken);
+            Changed?.Invoke();
         }
-
-        Changed?.Invoke();
+        finally { _recordLock.Release(); }
     }
 }
